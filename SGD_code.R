@@ -135,7 +135,7 @@ plot(x=data.gw10.df$gw10.td, y=as.numeric(is.na(data.gw10.df$gwlevel)))
 plot(x=data.gw15.df$gw15.td, y=as.numeric(is.na(data.gw15.df$gwlevel)))
 
 # do the same with the file containing complete data
-
+# 
 
 ###################
 
