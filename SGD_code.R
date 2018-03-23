@@ -105,6 +105,7 @@ pond.xts <- xts(x = select(dataAll.pond.df, temp.pond:depth.pond), order.by = da
 # can grab column names from txt file
 data.gw10.df <- read_table2(file = "GW10.txt", col_names = c("agency,cd", "site.no", "date", "time", "tz.cd", "gwlevel", "gwlevel.cd", "wtemp", "wtemp.cd", "cond", "cond.cd"), na = c("", "NA", "--"), skip = 31)
 data.gw15.df <- read_table2(file = "GW15.txt", col_names = c("agency.cd", "site.no", "date", "time", "tz.cd", "gwlevel", "gwlevel.cd"), na = c("", "NA", "--"), skip = 29)
+data.gw15old.df <- read_table2(file = "GW15old.txt", col_names = c("agency.cd", "site.no", "date", "time", "tz.cd", "gwlevel", "gwlevel.cd"), na = c("", "NA", "--"), skip = 29)
 
 # get gwlevel datetimes
 data.gw10.df <- data.gw10.df %>% mutate(
@@ -115,26 +116,39 @@ data.gw15.df <- data.gw15.df %>% mutate(
   gw15.td = paste(date, time),
   gw15.td = as.POSIXct(gw15.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
 )
+data.gw15old.df <- data.gw15old.df %>% mutate(
+  gw15old.td = paste(date, time),
+  gw15old.td = as.POSIXct(gw15old.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+)
 
 # create continuous timeline at the given frequency
 time.index.10 <- as.POSIXct(seq(from=unclass(first(data.gw10.df$gw10.td)), to=unclass(last(data.gw10.df$gw10.td)), by=10*60), origin="1970-01-01 00:00:00", format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
 time.index.15 <- as.POSIXct(seq(from=unclass(first(data.gw15.df$gw15.td)), to=unclass(last(data.gw15.df$gw15.td)), by=15*60), origin="1970-01-01 00:00:00", format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+time.index.15old <- as.POSIXct(seq(from=unclass(first(data.gw15old.df$gw15old.td)), to=unclass(last(data.gw15old.df$gw15old.td)), by=15*60), origin="1970-01-01 00:00:00", format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
 
-# merge the data with the continuous time
+# merge the data with regular time stamps
 data.gw10.df <- data.gw10.df %>% full_join(as_tibble(x=list(gw10.td=time.index.10)))
 data.gw15.df <- data.gw15.df %>% full_join(as_tibble(x=list(gw15.td=time.index.15)))
+data.gw15old.df <- data.gw15old.df %>% full_join(as_tibble(x=list(gw15old.td=time.index.15old)))
 
 # find times with no data
 data.gw10.na <- data.gw10.df %>% 
   filter(is.na(data.gw10.df$gwlevel))
 data.gw15.na <- data.gw15.df %>% 
   filter(is.na(data.gw15.df$gwlevel))
+data.gw15old.na <- data.gw15old.df %>% 
+  filter(is.na(data.gw15old.df$gwlevel))
 
 # plot times with no data
 plot(x=data.gw10.df$gw10.td, y=as.numeric(is.na(data.gw10.df$gwlevel)))
 plot(x=data.gw15.df$gw15.td, y=as.numeric(is.na(data.gw15.df$gwlevel)))
+points(x=data.gw15old.df$gw15old.td, y=as.numeric(is.na(data.gw15old.df$gwlevel)), col="red")
 
-# do the same with the file containing complete data
+# work with gw15; create a 4-period (hourly) moving average
+data.gw15.df <- arrange(data.gw15.df, gw15.td)
+data.gw15.df <- data.gw15.df %>% mutate(
+  gw15.ma = rollapplyr(data=gwlevel, width=4, mean, fill = NA)
+)
 # 
 #
 
