@@ -6,6 +6,7 @@ Sys.setenv(TZ="Pacific/Honolulu")
 setwd("~/Google Drive/SGD/")
 library("xts")
 library("tidyverse")
+library("lubridate")
 
 # load sniffer data
 data.kb2014.df <- read_table2(file = "kb2014_sniffer.txt", na = c("", "NA", "-"))
@@ -42,9 +43,12 @@ dataAll.sniff.df <- dataAll.sniff.df %>% mutate(
 # get sniffer datetimes
 dataAll.sniff.df <- dataAll.sniff.df %>% mutate(
   sniff.td = paste(Year, "-", match(Month,month.abb), "-", Date, sep = ""),
-  sniff.td = as.Date(sniff.td, "%Y-%m-%d", tz="Pacific/Honolulu"),
+  # sniff.td = as.Date(sniff.td, "%Y-%m-%d", tz="Pacific/Honolulu"),
+  sniff.td = ymd(sniff.td),
   sniff.td = paste(sniff.td, Time),
-  sniff.td = as.POSIXct(sniff.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+  # sniff.td = as.POSIXct(sniff.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+  sniff.td = ymd_hms(sniff.td), 
+  sniff.td = force_tz(sniff.td, "Pacific/Honolulu")
 )
 
 # convert to xts
@@ -52,10 +56,18 @@ sniff.xts <- xts(x = select(dataAll.sniff.df,cpsB:cpsK), order.by = dataAll.snif
 # tzone(sniff.xts)
 
 # load CTD data from sniffer location
-data.ctd2014.df <- read_csv(file = "CTD2014.csv", col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), locale = locale(tz="Pacific/Honolulu"))
-data.ctd2015.df <- read_csv(file = "CTD2015.csv", col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), locale = locale(tz="Pacific/Honolulu"))
-data.ctd2016.df <- read_csv(file = "CTD2016.csv", col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), locale = locale(tz="Pacific/Honolulu"))
-data.ctd2017.df <- read_csv(file = "CTD2017.csv", col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), locale = locale(tz="Pacific/Honolulu"))
+data.ctd2014.df <- read_csv(file = "CTD2014.csv", 
+                            col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), 
+                            locale = locale(tz="Pacific/Honolulu"))
+data.ctd2015.df <- read_csv(file = "CTD2015.csv", 
+                            col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), 
+                            locale = locale(tz="Pacific/Honolulu"))
+data.ctd2016.df <- read_csv(file = "CTD2016.csv", 
+                            col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), 
+                            locale = locale(tz="Pacific/Honolulu"))
+data.ctd2017.df <- read_csv(file = "CTD2017.csv", 
+                            col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), 
+                            locale = locale(tz="Pacific/Honolulu"))
 
 # combine data into one data frame
 dataAll.ctd.df <- bind_rows(data.ctd2014.df, data.ctd2015.df, data.ctd2016.df, data.ctd2017.df)
@@ -72,10 +84,17 @@ ctd.xts <- xts(x = select(dataAll.ctd.df, temp.ctd:sal.ctd), order.by = dataAll.
 # tzone(ctd.xts)
 
 # load owl data: start with first file and append the rest
-dataAll.owl.df <- read_csv(file = "OceWL/CO-OPS__1617433__wl-1.csv", col_types = cols(`Date Time` = col_datetime(format = "%Y-%m-%d %H:%M")), locale = locale(tz="Pacific/Honolulu"))
+dataAll.owl.df <- read_csv(file = "OceWL/CO-OPS__1617433__wl-1.csv", 
+                           col_types = cols(`Date Time` = col_datetime(format = "%Y-%m-%d %H:%M")), 
+                           locale = locale(tz="Pacific/Honolulu"))
 for (owl.i in 2:41) {
-#  assign(paste0("data.", owl.i, ".df"), read_csv(file = paste0("OceWL/CO-OPS__1617433__wl-", owl.i, ".csv"), col_types = cols(`Date Time` = col_datetime(format = "%Y-%m-%d %H:%M")), locale = locale(tz="Pacific/Honolulu")))
-  bind_rows(dataAll.owl.df, read_csv(file = paste0("OceWL/CO-OPS__1617433__wl-", owl.i, ".csv"), col_types = cols(`Date Time` = col_datetime(format = "%Y-%m-%d %H:%M")), locale = locale(tz="Pacific/Honolulu")))
+  # assign(paste0("data.", owl.i, ".df"), 
+  #        read_csv(file = paste0("OceWL/CO-OPS__1617433__wl-", owl.i, ".csv"), 
+  #                 col_types = cols(`Date Time` = col_datetime(format = "%Y-%m-%d %H:%M")), 
+  #                 locale = locale(tz="Pacific/Honolulu")))
+  bind_rows(dataAll.owl.df, read_csv(file = paste0("OceWL/CO-OPS__1617433__wl-", owl.i, ".csv"), 
+                                     col_types = cols(`Date Time` = col_datetime(format = "%Y-%m-%d %H:%M")), 
+                                     locale = locale(tz="Pacific/Honolulu")))
 }
 
 # set column names
@@ -87,9 +106,15 @@ owl.xts <- xts(x = select(dataAll.owl.df, water.owl:sigma.owl), order.by = dataA
 
 # load CTD data from pond location
 # pond data - data collected in coastal pond to represnt coastal aquifer response to tides and terrestrial hydrology
-data.pond2015.df <- read_csv(file = "pond2015.csv", col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), locale = locale(tz="Pacific/Honolulu"))
-data.pond2016.df <- read_csv(file = "pond2016.csv", col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), locale = locale(tz="Pacific/Honolulu"))
-data.pond2017.df <- read_csv(file = "pond2017.csv", col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), locale = locale(tz="Pacific/Honolulu"))
+data.pond2015.df <- read_csv(file = "pond2015.csv", 
+                             col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), 
+                             locale = locale(tz="Pacific/Honolulu"))
+data.pond2016.df <- read_csv(file = "pond2016.csv", 
+                             col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), 
+                             locale = locale(tz="Pacific/Honolulu"))
+data.pond2017.df <- read_csv(file = "pond2017.csv", 
+                             col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")), 
+                             locale = locale(tz="Pacific/Honolulu"))
 
 # combine data into one data frame
 dataAll.pond.df <- bind_rows(data.pond2015.df, data.pond2016.df, data.pond2017.df)
@@ -103,54 +128,91 @@ pond.xts <- xts(x = select(dataAll.pond.df, temp.pond:depth.pond), order.by = da
 
 # load groundwater level data - data from USGS Kalaoa N. Kona well
 # can grab column names from txt file
-data.gw10.df <- read_table2(file = "GW10.txt", col_names = c("agency,cd", "site.no", "date", "time", "tz.cd", "gwlevel", "gwlevel.cd", "wtemp", "wtemp.cd", "cond", "cond.cd"), na = c("", "NA", "--"), skip = 31)
-data.gw15.df <- read_table2(file = "GW15.txt", col_names = c("agency.cd", "site.no", "date", "time", "tz.cd", "gwlevel", "gwlevel.cd"), na = c("", "NA", "--"), skip = 29)
-data.gw15old.df <- read_table2(file = "GW15old.txt", col_names = c("agency.cd", "site.no", "date", "time", "tz.cd", "gwlevel", "gwlevel.cd"), na = c("", "NA", "--"), skip = 29)
+data.gw10.df <- read_table2(file = "GW10.txt", 
+                            col_names = c("agency,cd", "site.no", "date", "time", "tz.cd", "gwlevel", 
+                                          "gwlevel.cd", "wtemp", "wtemp.cd", "cond", "cond.cd"), 
+                            na = c("", "NA", "--"), skip = 31)
+data.gw15.df <- read_table2(file = "GW15.txt", 
+                            col_names = c("agency.cd", "site.no", "date", "time", "tz.cd", "gwlevel", 
+                                          "gwlevel.cd"), 
+                            na = c("", "NA", "--"), skip = 29)
+data.gw15old.df <- read_table2(file = "GW15old.txt", 
+                               col_names = c("agency.cd", "site.no", "date", "time", "tz.cd", "gwlevel", 
+                                             "gwlevel.cd"), 
+                               na = c("", "NA", "--"), skip = 29)
 
 # get gwlevel datetimes
 data.gw10.df <- data.gw10.df %>% mutate(
   gw10.td = paste(date, time),
-  gw10.td = as.POSIXct(gw10.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+  # gw10.td = as.POSIXct(gw10.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+  gw10.td = ymd_hms(gw10.td), 
+  gw10.td = force_tz(gw10.td, "Pacific/Honolulu")
 )
 data.gw15.df <- data.gw15.df %>% mutate(
   gw15.td = paste(date, time),
-  gw15.td = as.POSIXct(gw15.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+  # gw15.td = as.POSIXct(gw15.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+  gw15.td = ymd_hms(gw15.td), 
+  gw15.td = force_tz(gw15.td, "Pacific/Honolulu")
 )
 data.gw15old.df <- data.gw15old.df %>% mutate(
   gw15old.td = paste(date, time),
-  gw15old.td = as.POSIXct(gw15old.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+  # gw15old.td = as.POSIXct(gw15old.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+  gw15old.td = ymd_hms(gw15old.td), 
+  gw15old.td = force_tz(gw15old.td, "Pacific/Honolulu")
 )
 
-# create continuous timeline at the given frequency
-time.index.10 <- as.POSIXct(seq(from=unclass(first(data.gw10.df$gw10.td)), to=unclass(last(data.gw10.df$gw10.td)), by=10*60), origin="1970-01-01 00:00:00", format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
-time.index.15 <- as.POSIXct(seq(from=unclass(first(data.gw15.df$gw15.td)), to=unclass(last(data.gw15.df$gw15.td)), by=15*60), origin="1970-01-01 00:00:00", format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
-time.index.15old <- as.POSIXct(seq(from=unclass(first(data.gw15old.df$gw15old.td)), to=unclass(last(data.gw15old.df$gw15old.td)), by=15*60), origin="1970-01-01 00:00:00", format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+# create timeline at the given frequency
+# time.index.10 <- seq(from=ymd_hms(first(data.gw10.df$gw10.td)), 
+#                      to=ymd_hms(last(data.gw10.df$gw10.td)), by='10 min') %>% force_tz("Pacific/Honolulu")
+# time.index.15old <- seq(from=first(data.gw15old.df$gw15old.td), 
+#                         to=last(data.gw15old.df$gw15old.td), by='15 min') %>% force_tz("Pacific/Honolulu")
+# time.index.15 <- as.POSIXct(seq(from=unclass(first(data.gw15.df$gw15.td)), 
+#                                 to=unclass(last(data.gw15.df$gw15.td)), by=15*60), 
+#                             origin="1970-01-01 00:00:00", format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+time.index.15 <- seq(from=first(data.gw15.df$gw15.td), 
+                     to=last(data.gw15.df$gw15.td), by='15 min') %>% force_tz("Pacific/Honolulu")
+
 
 # merge the data with regular time stamps
-data.gw10.df <- data.gw10.df %>% full_join(as_tibble(x=list(gw10.td=time.index.10)))
+# data.gw10.df <- data.gw10.df %>% full_join(as_tibble(x=list(gw10.td=time.index.10)))
+# data.gw15old.df <- data.gw15old.df %>% full_join(as_tibble(x=list(gw15old.td=time.index.15old)))
 data.gw15.df <- data.gw15.df %>% full_join(as_tibble(x=list(gw15.td=time.index.15)))
-data.gw15old.df <- data.gw15old.df %>% full_join(as_tibble(x=list(gw15old.td=time.index.15old)))
 
 # find times with no data
-data.gw10.na <- data.gw10.df %>% 
-  filter(is.na(data.gw10.df$gwlevel))
-data.gw15.na <- data.gw15.df %>% 
-  filter(is.na(data.gw15.df$gwlevel))
+# data.gw10.na <- data.gw10.df %>% 
+#   filter(is.na(data.gw10.df$gwlevel))
+# data.gw15.na <- data.gw15.df %>% 
+#   filter(is.na(data.gw15.df$gwlevel))
 data.gw15old.na <- data.gw15old.df %>% 
   filter(is.na(data.gw15old.df$gwlevel))
 
 # plot times with no data
-plot(x=data.gw10.df$gw10.td, y=as.numeric(is.na(data.gw10.df$gwlevel)))
+# plot(x=data.gw10.df$gw10.td, y=as.numeric(is.na(data.gw10.df$gwlevel)))
+# points(x=data.gw15old.df$gw15old.td, y=as.numeric(is.na(data.gw15old.df$gwlevel)), col="red")
 plot(x=data.gw15.df$gw15.td, y=as.numeric(is.na(data.gw15.df$gwlevel)))
-points(x=data.gw15old.df$gw15old.td, y=as.numeric(is.na(data.gw15old.df$gwlevel)), col="red")
 
-# work with gw15; create a 4-period (hourly) moving average
+# work with gw15
+# create a 4-period (hourly) moving average
 data.gw15.df <- arrange(data.gw15.df, gw15.td)
 data.gw15.df <- data.gw15.df %>% mutate(
   gw15.ma = rollapplyr(data=gwlevel, width=4, mean, fill = NA)
 )
-# 
-#
+
+# load meteorogical data - data from Puu Waawaa Hawaii
+# can grab column names from txt file
+data.meteo.df <- read_table2(file = "MeteoPWW.txt", col_names = c("date", "year", "day", "run", "solrad", "windspavg", "winddir", "windspgust", "airtempavg", "airtempmax", "airtempmin", "relhumavg", "relhummax", "relhummin", "precip"), na = c("", "NA", "--"), skip = 6)
+
+data.meteo.df <- data.meteo.df %>% mutate(
+  date = mdy(date),
+  date = force_tz(date, "Pacific/Honolulu")
+)
+with_tz(data.meteo.df$date[1], "Pacific/Honolulu")
+with_tz(data.meteo.df$date[1], "UTC")
+class(data.meteo.df$date[1])
+
+
+
+
 
 ###################
 
