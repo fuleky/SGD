@@ -36,8 +36,8 @@ dataAll.sniff.df <- dataAll.sniff.df %>% mutate(
 # replace NA in cpsB to 0.1
 # replace NA in cpsK to 0.2
 dataAll.sniff.df <- dataAll.sniff.df %>% mutate(
-  cpsB = if_else(is.na(cpsB), 0.1, cpsB),
-  cpsK = if_else(is.na(cpsK), 0.2, cpsK)
+  cpsB = if_else(is.na(cpsB), 0.001116442, cpsB)
+  # cpsK = if_else(is.na(cpsK), 0.2, cpsK)
 )
 
 # get sniffer datetimes
@@ -52,8 +52,24 @@ dataAll.sniff.df <- dataAll.sniff.df %>% mutate(
 )
 
 # convert to xts
-sniff.xts <- xts(x = select(dataAll.sniff.df,cpsB:cpsK), order.by = dataAll.sniff.df$sniff.td)
+# sniff.xts <- xts(x = select(dataAll.sniff.df,cpsB:cpsK), order.by = dataAll.sniff.df$sniff.td)
 # tzone(sniff.xts)
+
+# aggregate observations within an hour using dplyr
+# create factor levels for each hour
+dataAll.sniff.df <- dataAll.sniff.df %>% mutate(
+  interv60.td = cut(sniff.td, "1 hour", right = TRUE) 
+)
+# group, summarize, and order data based on factor levels
+dataAll.sniff60.df <- dataAll.sniff.df %>%
+  group_by(interv60.td) %>%
+  summarise(cpsB60.mean = mean(cpsB), cpsK60.mean = mean(cpsK), 
+            runcB60.mean = mean(SigAB/AreaB), runcK60.mean = mean(SigAK/AreaK)) %>%
+  arrange(interv60.td)
+# convert factor levels to datetime
+dataAll.sniff60.df <- dataAll.sniff60.df %>% mutate(
+  interv60.td = ymd_hms(interv60.td)+60*60 
+)
 
 # load CTD data from sniffer location
 data.ctd2014.df <- read_csv(file = "CTD2014.csv", 
@@ -80,8 +96,23 @@ dataAll.ctd.df <- dataAll.ctd.df %>%
 dataAll.ctd.df <- rename(dataAll.ctd.df, temp.ctd = Temperature, sal.ctd = Salinity)
 
 # convert to xts
-ctd.xts <- xts(x = select(dataAll.ctd.df, temp.ctd:sal.ctd), order.by = dataAll.ctd.df$Date)
+# ctd.xts <- xts(x = select(dataAll.ctd.df, temp.ctd:sal.ctd), order.by = dataAll.ctd.df$Date)
 # tzone(ctd.xts)
+
+# aggregate observations within an hour using dplyr
+# create factor levels for each hour
+dataAll.ctd.df <- dataAll.ctd.df %>% mutate(
+  interv60.td = cut(Date, "1 hour", right = TRUE) 
+)
+# group, summarize, and order data based on factor levels
+dataAll.ctd60.df <- dataAll.ctd.df %>%
+  group_by(interv60.td) %>%
+  summarise(temp.ctd60.mean = mean(temp.ctd), sal.ctd60.mean = mean(sal.ctd)) %>%
+  arrange(interv60.td)
+# convert factor levels to datetime
+dataAll.ctd60.df <- dataAll.ctd60.df %>% mutate(
+  interv60.td = ymd_hms(interv60.td)+60*60 
+)
 
 # load owl data: start with first file and append the rest
 dataAll.owl.df <- read_csv(file = "OceWL/CO-OPS__1617433__wl-1.csv", 
@@ -98,11 +129,26 @@ for (owl.i in 2:41) {
 }
 
 # set column names
-dataAll.owl.df <- rename(dataAll.owl.df, water.owl = `Water Level`, sigma.owl = Sigma)
+dataAll.owl.df <- rename(dataAll.owl.df, owl.td = `Date Time`, water.owl = `Water Level`, sigma.owl = Sigma)
 
 # convert to xts
-owl.xts <- xts(x = select(dataAll.owl.df, water.owl:sigma.owl), order.by = dataAll.owl.df$`Date Time`)
+# owl.xts <- xts(x = select(dataAll.owl.df, water.owl:sigma.owl), order.by = dataAll.owl.df$owl.td)
 # tzone(owl.xts)
+
+# aggregate observations within an hour using dplyr
+# create factor levels for each hour
+dataAll.owl.df <- dataAll.owl.df %>% mutate(
+  interv60.td = cut(owl.td, "1 hour", right = TRUE) 
+)
+# group, summarize, and order data based on factor levels
+dataAll.owl60.df <- dataAll.owl.df %>%
+  group_by(interv60.td) %>%
+  summarise(water.owl60.mean = mean(water.owl), sigma.owl60.mean = mean(sigma.owl)) %>%
+  arrange(interv60.td)
+# convert factor levels to datetime
+dataAll.owl60.df <- dataAll.owl60.df %>% mutate(
+  interv60.td = ymd_hms(interv60.td)+60*60 
+)
 
 # load CTD data from pond location
 # pond data - data collected in coastal pond to represnt coastal aquifer response to tides and terrestrial hydrology
@@ -123,94 +169,140 @@ dataAll.pond.df <- bind_rows(data.pond2015.df, data.pond2016.df, data.pond2017.d
 dataAll.pond.df <- rename(dataAll.pond.df, temp.pond = Temperature, sal.pond = Salinity, depth.pond = Depth)
 
 # convert to xts
-pond.xts <- xts(x = select(dataAll.pond.df, temp.pond:depth.pond), order.by = dataAll.pond.df$Date)
+# pond.xts <- xts(x = select(dataAll.pond.df, temp.pond:depth.pond), order.by = dataAll.pond.df$Date)
 # tzone(pond.xts)
 
+# aggregate observations within an hour using dplyr
+# create factor levels for each hour
+dataAll.pond.df <- dataAll.pond.df %>% mutate(
+  interv60.td = cut(Date, "1 hour", right = TRUE) 
+)
+# group, summarize, and order data based on factor levels
+dataAll.pond60.df <- dataAll.pond.df %>%
+  group_by(interv60.td) %>%
+  summarise(temp.pond60.mean = mean(temp.pond), sal.pond60.mean = mean(sal.pond), 
+            depth.pond60.mean = mean(depth.pond)) %>%
+  arrange(interv60.td)
+# convert factor levels to datetime
+dataAll.pond60.df <- dataAll.pond60.df %>% mutate(
+  interv60.td = ymd_hms(interv60.td)+60*60 
+)
+
 # load groundwater level data - data from USGS Kalaoa N. Kona well
+# in the next few steps analyze/compare the various gw data sets by plotting them
+
 # can grab column names from txt file
-data.gw10.df <- read_table2(file = "GW10.txt", 
-                            col_names = c("agency,cd", "site.no", "date", "time", "tz.cd", "gwlevel", 
-                                          "gwlevel.cd", "wtemp", "wtemp.cd", "cond", "cond.cd"), 
-                            na = c("", "NA", "--"), skip = 31)
-data.gw15.df <- read_table2(file = "GW15.txt", 
+# dataAll.gw10.df <- read_table2(file = "GW10.txt", 
+#                             col_names = c("agency,cd", "site.no", "date", "time", "tz.cd", "gwlevel", 
+#                                           "gwlevel.cd", "wtemp", "wtemp.cd", "cond", "cond.cd"), 
+#                             na = c("", "NA", "--"), skip = 31)
+# dataAll.gw15old.df <- read_table2(file = "GW15old.txt", 
+#                                col_names = c("agency.cd", "site.no", "date", "time", "tz.cd", "gwlevel", 
+#                                              "gwlevel.cd"), 
+#                                na = c("", "NA", "--"), skip = 29)
+dataAll.gw15.df <- read_table2(file = "GW15.txt", 
                             col_names = c("agency.cd", "site.no", "date", "time", "tz.cd", "gwlevel", 
                                           "gwlevel.cd"), 
                             na = c("", "NA", "--"), skip = 29)
-data.gw15old.df <- read_table2(file = "GW15old.txt", 
-                               col_names = c("agency.cd", "site.no", "date", "time", "tz.cd", "gwlevel", 
-                                             "gwlevel.cd"), 
-                               na = c("", "NA", "--"), skip = 29)
 
 # get gwlevel datetimes
-data.gw10.df <- data.gw10.df %>% mutate(
-  gw10.td = paste(date, time),
-  # gw10.td = as.POSIXct(gw10.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
-  gw10.td = ymd_hms(gw10.td), 
-  gw10.td = force_tz(gw10.td, "Pacific/Honolulu")
-)
-data.gw15.df <- data.gw15.df %>% mutate(
+# dataAll.gw10.df <- dataAll.gw10.df %>% mutate(
+#   gw10.td = paste(date, time),
+#   # gw10.td = as.POSIXct(gw10.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+#   gw10.td = ymd_hms(gw10.td), 
+#   gw10.td = force_tz(gw10.td, "Pacific/Honolulu")
+# )
+# dataAll.gw15old.df <- dataAll.gw15old.df %>% mutate(
+#   gw15old.td = paste(date, time),
+#   # gw15old.td = as.POSIXct(gw15old.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
+#   gw15old.td = ymd_hms(gw15old.td), 
+#   gw15old.td = force_tz(gw15old.td, "Pacific/Honolulu")
+# )
+dataAll.gw15.df <- dataAll.gw15.df %>% mutate(
   gw15.td = paste(date, time),
   # gw15.td = as.POSIXct(gw15.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
   gw15.td = ymd_hms(gw15.td), 
   gw15.td = force_tz(gw15.td, "Pacific/Honolulu")
 )
-data.gw15old.df <- data.gw15old.df %>% mutate(
-  gw15old.td = paste(date, time),
-  # gw15old.td = as.POSIXct(gw15old.td, format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
-  gw15old.td = ymd_hms(gw15old.td), 
-  gw15old.td = force_tz(gw15old.td, "Pacific/Honolulu")
-)
 
 # create timeline at the given frequency
-# time.index.10 <- seq(from=ymd_hms(first(data.gw10.df$gw10.td)), 
-#                      to=ymd_hms(last(data.gw10.df$gw10.td)), by='10 min') %>% force_tz("Pacific/Honolulu")
-# time.index.15old <- seq(from=first(data.gw15old.df$gw15old.td), 
-#                         to=last(data.gw15old.df$gw15old.td), by='15 min') %>% force_tz("Pacific/Honolulu")
-# time.index.15 <- as.POSIXct(seq(from=unclass(first(data.gw15.df$gw15.td)), 
-#                                 to=unclass(last(data.gw15.df$gw15.td)), by=15*60), 
+# time.index.10 <- seq(from=ymd_hms(first(dataAll.gw10.df$gw10.td)), 
+#                      to=ymd_hms(last(dataAll.gw10.df$gw10.td)), by='10 min') %>% force_tz("Pacific/Honolulu")
+# time.index.15old <- seq(from=first(dataAll.gw15old.df$gw15old.td), 
+#                         to=last(dataAll.gw15old.df$gw15old.td), by='15 min') %>% force_tz("Pacific/Honolulu")
+# time.index.15 <- as.POSIXct(seq(from=unclass(first(dataAll.gw15.df$gw15.td)), 
+#                                 to=unclass(last(dataAll.gw15.df$gw15.td)), by=15*60), 
 #                             origin="1970-01-01 00:00:00", format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
-time.index.15 <- seq(from=first(data.gw15.df$gw15.td), 
-                     to=last(data.gw15.df$gw15.td), by='15 min') %>% force_tz("Pacific/Honolulu")
-
+time.index.15 <- seq(from=first(dataAll.gw15.df$gw15.td), 
+                     to=last(dataAll.gw15.df$gw15.td), by='15 min') %>% force_tz("Pacific/Honolulu")
 
 # merge the data with regular time stamps
-# data.gw10.df <- data.gw10.df %>% full_join(as_tibble(x=list(gw10.td=time.index.10)))
-# data.gw15old.df <- data.gw15old.df %>% full_join(as_tibble(x=list(gw15old.td=time.index.15old)))
-data.gw15.df <- data.gw15.df %>% full_join(as_tibble(x=list(gw15.td=time.index.15)))
+# dataAll.gw10.df <- dataAll.gw10.df %>% full_join(as_tibble(x=list(gw10.td=time.index.10)))
+# dataAll.gw15old.df <- dataAll.gw15old.df %>% full_join(as_tibble(x=list(gw15old.td=time.index.15old)))
+dataAll.gw15.df <- dataAll.gw15.df %>% full_join(as_tibble(x=list(gw15.td=time.index.15)))
 
 # find times with no data
-# data.gw10.na <- data.gw10.df %>% 
-#   filter(is.na(data.gw10.df$gwlevel))
-# data.gw15.na <- data.gw15.df %>% 
-#   filter(is.na(data.gw15.df$gwlevel))
-data.gw15old.na <- data.gw15old.df %>% 
-  filter(is.na(data.gw15old.df$gwlevel))
+# dataAll.gw10.na <- dataAll.gw10.df %>% 
+#   filter(is.na(dataAll.gw10.df$gwlevel))
+# dataAll.gw15old.na <- dataAll.gw15old.df %>% 
+#   filter(is.na(dataAll.gw15old.df$gwlevel))
+dataAll.gw15.na <- dataAll.gw15.df %>%
+  filter(is.na(dataAll.gw15.df$gwlevel))
 
 # plot times with no data
-# plot(x=data.gw10.df$gw10.td, y=as.numeric(is.na(data.gw10.df$gwlevel)))
-# points(x=data.gw15old.df$gw15old.td, y=as.numeric(is.na(data.gw15old.df$gwlevel)), col="red")
-plot(x=data.gw15.df$gw15.td, y=as.numeric(is.na(data.gw15.df$gwlevel)))
+# plot(x=dataAll.gw10.df$gw10.td, y=as.numeric(is.na(dataAll.gw10.df$gwlevel)))
+# points(x=dataAll.gw15old.df$gw15old.td, y=as.numeric(is.na(dataAll.gw15old.df$gwlevel)), col="red")
+plot(x=dataAll.gw15.df$gw15.td, y=as.numeric(is.na(dataAll.gw15.df$gwlevel)))
 
-# work with gw15
+# based on the comparison of gw data sets decided to work with gw15
+
+# make sure data is ordered by time
+dataAll.gw15.df <- arrange(dataAll.gw15.df, gw15.td)
+
 # create a 4-period (hourly) moving average
-data.gw15.df <- arrange(data.gw15.df, gw15.td)
-data.gw15.df <- data.gw15.df %>% mutate(
+dataAll.gw15.df <- dataAll.gw15.df %>% mutate(
   gw15.ma = rollapplyr(data=gwlevel, width=4, mean, fill = NA)
 )
 
+# aggregate observations within an hour using baseR
+# dataAll.gw60.df <- aggregate(list(gwlevel = dataAll.gw15.df$gwlevel), 
+#                              list(interv60.td = cut(dataAll.gw15.df$gw15.td, "1 hour")), mean)
+
+# aggregate observations within an hour using dplyr
+# create factor levels for each hour
+dataAll.gw15.df <- dataAll.gw15.df %>% mutate(
+  interv60.td = cut(gw15.td, "1 hour", right = TRUE) 
+)
+# group, summarize, and order gwlevel data based on factor levels
+dataAll.gw60.df <- dataAll.gw15.df %>%
+  group_by(interv60.td) %>%
+  summarise(gw60.mean = mean(gwlevel)) %>%
+  arrange(interv60.td)
+# convert factor levels to datetime
+dataAll.gw60.df <- dataAll.gw60.df %>% mutate(
+  interv60.td = ymd_hms(interv60.td)+60*60 
+)
+
+####################
+
+
+
+
 # load meteorogical data - data from Puu Waawaa Hawaii
 # can grab column names from txt file
-data.meteo.df <- read_table2(file = "MeteoPWW.txt", col_names = c("date", "year", "day", "run", "solrad", "windspavg", "winddir", "windspgust", "airtempavg", "airtempmax", "airtempmin", "relhumavg", "relhummax", "relhummin", "precip"), na = c("", "NA", "--"), skip = 6)
+dataAll.meteo.df <- read_table2(file = "MeteoPWW.txt", col_names = c("date", "year", "day", "run", "solrad", "windspavg", "winddir", "windspgust", "airtempavg", "airtempmax", "airtempmin", "relhumavg", "relhummax", "relhummin", "precip"), na = c("", "NA", "--"), skip = 6)
 
-data.meteo.df <- data.meteo.df %>% mutate(
+dataAll.meteo.df <- dataAll.meteo.df %>% mutate(
   date = mdy(date),
   date = force_tz(date, "Pacific/Honolulu")
 )
-with_tz(data.meteo.df$date[1], "Pacific/Honolulu")
-with_tz(data.meteo.df$date[1], "UTC")
-class(data.meteo.df$date[1])
 
 
+##################
+
+aggregate(list(temperature = temp$temperature), 
+          list(hourofday = cut(dataAll.gw15.df$date_time, "1 hour")), 
+          mean)
 
 
 
