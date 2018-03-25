@@ -33,8 +33,8 @@ dataAll.sniff.df <- dataAll.sniff.df %>% mutate(
   cpsK = AreaK / Counting
 )
 
-# replace NA in cpsB to 0.1
-# replace NA in cpsK to 0.2
+# replace NA in cpsB to 0.001116442
+# replace NA in cpsK to 0.2 but decided that this is not needed
 dataAll.sniff.df <- dataAll.sniff.df %>% mutate(
   cpsB = if_else(is.na(cpsB), 0.001116442, cpsB)
   # cpsK = if_else(is.na(cpsK), 0.2, cpsK)
@@ -68,7 +68,8 @@ dataAll.sniff60.df <- dataAll.sniff.df %>%
   arrange(interv60.td)
 # convert factor levels to datetime
 dataAll.sniff60.df <- dataAll.sniff60.df %>% mutate(
-  interv60.td = ymd_hms(interv60.td)+60*60 
+  interv60.td = ymd_hms(interv60.td)+60*60,
+  interv60.td = force_tz(interv60.td, "Pacific/Honolulu") 
 )
 
 # load CTD data from sniffer location
@@ -111,7 +112,8 @@ dataAll.ctd60.df <- dataAll.ctd.df %>%
   arrange(interv60.td)
 # convert factor levels to datetime
 dataAll.ctd60.df <- dataAll.ctd60.df %>% mutate(
-  interv60.td = ymd_hms(interv60.td)+60*60 
+  interv60.td = ymd_hms(interv60.td)+60*60,
+  interv60.td = force_tz(interv60.td, "Pacific/Honolulu")
 )
 
 # load owl data: start with first file and append the rest
@@ -123,7 +125,7 @@ for (owl.i in 2:41) {
   #        read_csv(file = paste0("OceWL/CO-OPS__1617433__wl-", owl.i, ".csv"), 
   #                 col_types = cols(`Date Time` = col_datetime(format = "%Y-%m-%d %H:%M")), 
   #                 locale = locale(tz="Pacific/Honolulu")))
-  bind_rows(dataAll.owl.df, read_csv(file = paste0("OceWL/CO-OPS__1617433__wl-", owl.i, ".csv"), 
+  dataAll.owl.df <- bind_rows(dataAll.owl.df, read_csv(file = paste0("OceWL/CO-OPS__1617433__wl-", owl.i, ".csv"), 
                                      col_types = cols(`Date Time` = col_datetime(format = "%Y-%m-%d %H:%M")), 
                                      locale = locale(tz="Pacific/Honolulu")))
 }
@@ -147,7 +149,8 @@ dataAll.owl60.df <- dataAll.owl.df %>%
   arrange(interv60.td)
 # convert factor levels to datetime
 dataAll.owl60.df <- dataAll.owl60.df %>% mutate(
-  interv60.td = ymd_hms(interv60.td)+60*60 
+  interv60.td = ymd_hms(interv60.td)+60*60,
+  interv60.td = force_tz(interv60.td, "Pacific/Honolulu")
 )
 
 # load CTD data from pond location
@@ -185,7 +188,8 @@ dataAll.pond60.df <- dataAll.pond.df %>%
   arrange(interv60.td)
 # convert factor levels to datetime
 dataAll.pond60.df <- dataAll.pond60.df %>% mutate(
-  interv60.td = ymd_hms(interv60.td)+60*60 
+  interv60.td = ymd_hms(interv60.td)+60*60,
+  interv60.td = force_tz(interv60.td, "Pacific/Honolulu") 
 )
 
 # load groundwater level data - data from USGS Kalaoa N. Kona well
@@ -234,7 +238,7 @@ dataAll.gw15.df <- dataAll.gw15.df %>% mutate(
 #                                 to=unclass(last(dataAll.gw15.df$gw15.td)), by=15*60), 
 #                             origin="1970-01-01 00:00:00", format="%Y-%m-%d %H:%M:%S", tz="Pacific/Honolulu")
 time.index.15 <- seq(from=first(dataAll.gw15.df$gw15.td), 
-                     to=last(dataAll.gw15.df$gw15.td), by='15 min') %>% force_tz("Pacific/Honolulu")
+                     to=last(dataAll.gw15.df$gw15.td), by="15 min") %>% force_tz("Pacific/Honolulu")
 
 # merge the data with regular time stamps
 # dataAll.gw10.df <- dataAll.gw10.df %>% full_join(as_tibble(x=list(gw10.td=time.index.10)))
@@ -280,12 +284,36 @@ dataAll.gw60.df <- dataAll.gw15.df %>%
   arrange(interv60.td)
 # convert factor levels to datetime
 dataAll.gw60.df <- dataAll.gw60.df %>% mutate(
-  interv60.td = ymd_hms(interv60.td)+60*60 
+  interv60.td = ymd_hms(interv60.td)+60*60,
+  interv60.td = force_tz(interv60.td, "Pacific/Honolulu") 
 )
 
 ####################
 
+# combine all relevant variables at the hourly frequency (gw60 has a time stamp every hour in the sample)
+dataAll.60.df <- dataAll.gw60.df %>% 
+  full_join(dataAll.pond60.df) %>% 
+  full_join(dataAll.owl60.df) %>% 
+  full_join(dataAll.ctd60.df) %>% 
+  full_join(dataAll.sniff60.df)
 
+# fill in skipped hours in cpsB variable by averaging over the previous and next observation
+dataAll.60.df <- dataAll.60.df %>% mutate(
+  cpsB60.mean.fill = (lag(dataAll.60.df$cpsB60.mean) + lead(dataAll.60.df$cpsB60.mean))/2
+)
+dataAll.60.df$cpsB60.mean[!complete.cases(dataAll.60.df$cpsB60.mean)] <- 
+  dataAll.60.df$cpsB60.mean.fill[!complete.cases(dataAll.60.df$cpsB60.mean)]
+dataAll.60.df <- select(dataAll.60.df, -cpsB60.mean.fill)
+  
+# plot data in combined data set, check what is missing
+# par(mfrow = c(12,1))
+pdf("plots.pdf")
+for (var.i in 2:13) {
+  plot(x = dataAll.60.df$interv60.td, 
+       y = as.numeric(complete.cases(dataAll.60.df[,var.i])), 
+       main = names(dataAll.60.df[,var.i]))
+}
+dev.off()
 
 
 # load meteorogical data - data from Puu Waawaa Hawaii
