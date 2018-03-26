@@ -1,4 +1,6 @@
+##################
 # SETTING UP ENVIRONMENT
+##################
 
 # Sys.getenv("TZ")
 Sys.setenv(TZ = "Pacific/Honolulu")
@@ -109,7 +111,7 @@ rm(cpsB60.mean.fill)
 # CTD OCEAN
 ##################
 
-# load CTD data from sniffer location
+# load CTD data from sniffer location, CTD attached to floating sniffer frame
 data.ctd2014.df <- read_csv(
   file = "CTD2014.csv",
   col_types = cols(Date = col_datetime(format = "%m/%d/%Y %H:%M:%S")),
@@ -411,6 +413,10 @@ ma <- function(x, n = 24) {
   stats::filter(x, rep(1 / n, n), sides = 1)
 }
 
+##################
+# DIAGNOSTIC PLOT OF DATA
+##################
+
 # save the plots in a single pdf file
 pdf(
   "plots.pdf",
@@ -461,6 +467,24 @@ for (var.i in 2:13) {
 }
 
 dev.off()
+
+##################
+# SAMPLE PLOT OF DATA
+##################
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.60.df) +
+  geom_point(mapping = aes(
+    x = interv60.td,
+    y = cpsB60.mean,
+    color = water.owl60.mean
+    #color = gw60.mean
+  )) +
+ggtitle("cpsB-water") + xlab("time") + ylab("cpsB")
+
+# render the plot
+print(data.plot)
 
 ##################
 # METEOROLOGY
