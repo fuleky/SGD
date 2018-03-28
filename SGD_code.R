@@ -478,10 +478,11 @@ data.plot <-
   geom_point(mapping = aes(
     x = interv60.td,
     y = cpsB60.mean,
-    color = water.owl60.mean
-    #color = gw60.mean
+    #color = sal.ctd60.mean
+    color = gw60.mean
   )) +
-ggtitle("cpsB-water") + xlab("time") + ylab("cpsB")
+  scale_color_gradientn(colors = rainbow(10)) +
+  ggtitle("cpsB-water") + xlab("time") + ylab("cpsB")
 
 # render the plot
 print(data.plot)
@@ -512,13 +513,54 @@ dataAll.meteo.df <-
       "relhummin",
       "precip"
     ),
-    na = c("", "NA", "--"),
+    na = c("", "NA", "--", -9999),
     skip = 6
   )
 
 dataAll.meteo.df <- dataAll.meteo.df %>% mutate(date = mdy(date),
-                                                date = force_tz(date, "Pacific/Honolulu"))
+                                                date = ymd_hms(paste(date, hms::as.hms(0)), tz = "Pacific/Honolulu"))
+                                                # date = force_tz(date, "Pacific/Honolulu"))
+
+#create hourly time stamps
+time.index.60 <- seq(from = ymd_hms(paste(
+  first(dataAll.meteo.df$date), hms::as.hms(0)
+)),
+to = ymd_hms(paste(
+  last(dataAll.meteo.df$date), hms::as.hms(60 * 60 * 24)
+)),
+by = "1 hour") %>% force_tz("Pacific/Honolulu")
+
+# combine daily data with hourly time stamps
+dataAll.meteo60.df <- dataAll.meteo.df %>%
+  full_join(as_tibble(x = list(date = time.index.60))) %>%
+  arrange(date)
+
+# convert data to xts
+dataAll.meteo60.xts <-
+  xts(
+    x = select(dataAll.meteo60.df,-date),
+    order.by = ymd_hms(dataAll.meteo60.df$date, tz = "Pacific/Honolulu")
+  )
+
+# interpolate xts to hourly series
+dataAll.meteo60int.xts <- na.spline(dataAll.meteo60.xts)
+#dataAll.meteo60int.xts <- na.approx(dataAll.meteo60.xts)
+
+# combine time with data from xts
+dataAll.meteo60.df <-
+  bind_cols(as.tibble(x = list(interv60.td = index(
+    dataAll.meteo60int.xts
+  ))), as.tibble(dataAll.meteo60int.xts))
+
+# combine hourly meteorogical values with the hourly data set
+dataAll.60.df <- dataAll.60.df %>%
+  full_join(dataAll.meteo60.df) %>%
+  arrange(interv60.td)
+
 
 ##################
 # TEST CODE BELOW THIS LINE
 ##################
+
+plot(dataAll.60.df$airtempavg)
+plot(dataAll.meteo.df$airtempavg)
