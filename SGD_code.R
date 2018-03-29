@@ -396,6 +396,64 @@ dataAll.gw60.df <- dataAll.gw15.df %>%
   arrange(interv60.td)
 
 ##################
+# METEOROLOGY
+##################
+
+# load meteorogical data - data from Puu Waawaa Hawaii
+# can grab column names from txt file
+dataAll.meteo.df <-
+  read_table2(
+    file = "MeteoPWW.txt",
+    col_names = c(
+      "date",
+      "year",
+      "day",
+      "run",
+      "solrad",
+      "windspavg",
+      "winddir",
+      "windspgust",
+      "airtempavg",
+      "airtempmax",
+      "airtempmin",
+      "relhumavg",
+      "relhummax",
+      "relhummin",
+      "precip"
+    ),
+    na = c("", "NA", "--", -9999),
+    skip = 6
+  )
+
+dataAll.meteo.df <- dataAll.meteo.df %>%
+  mutate(date = mdy(date),
+         date = ymd_hms(paste(date, hms::as.hms(0)), tz = "Pacific/Honolulu"))
+
+#create hourly time stamps
+time.index.60 <- seq(from = ymd_hms(paste(first(dataAll.meteo.df$date), hms::as.hms(0))), 
+                     to = ymd_hms(paste(last(dataAll.meteo.df$date), hms::as.hms(60 * 60 * 24))), 
+                     by = "1 hour") %>% force_tz("Pacific/Honolulu")
+
+# combine daily data with hourly time stamps
+dataAll.meteo60.df <- dataAll.meteo.df %>%
+  full_join(as_tibble(x = list(date = time.index.60))) %>%
+  arrange(date)
+
+# convert data to xts
+dataAll.meteo60.xts <-
+  xts(x = select(dataAll.meteo60.df,-(date:run)), 
+      order.by = ymd_hms(dataAll.meteo60.df$date, tz = "Pacific/Honolulu"))
+
+# interpolate xts to hourly series
+#dataAll.meteo60int.xts <- na.spline(dataAll.meteo60.xts)
+dataAll.meteo60int.xts <- na.approx(dataAll.meteo60.xts)
+
+# combine time with data from xts
+dataAll.meteo60.df <-
+  bind_cols(as.tibble(x = list(interv60.td = index(dataAll.meteo60int.xts))), 
+            as.tibble(dataAll.meteo60int.xts))
+
+##################
 # CREATE COMBINED DATA SET OF HOURLY OBSERVATIONS
 ##################
 
@@ -406,6 +464,7 @@ dataAll.60.df <- dataAll.gw60.df %>%
   full_join(dataAll.owl60.df) %>%
   full_join(dataAll.ctd60.df) %>%
   full_join(dataAll.sniff60.df) %>%
+  full_join(dataAll.meteo60.df) %>%
   arrange(interv60.td)
 
 # define a (24 hour) backward moving average function
@@ -426,7 +485,7 @@ pdf(
 )
 
 # plot data in combined data set, check what is missing
-for (var.i in 2:13) {
+for (var.i in 2:24) {
   #var.i = 12
   
   # plot the data (grey), 24 hour moving average (blue), and missing values (red)
@@ -488,79 +547,11 @@ data.plot <-
 print(data.plot)
 
 ##################
-# METEOROLOGY
-##################
-
-# load meteorogical data - data from Puu Waawaa Hawaii
-# can grab column names from txt file
-dataAll.meteo.df <-
-  read_table2(
-    file = "MeteoPWW.txt",
-    col_names = c(
-      "date",
-      "year",
-      "day",
-      "run",
-      "solrad",
-      "windspavg",
-      "winddir",
-      "windspgust",
-      "airtempavg",
-      "airtempmax",
-      "airtempmin",
-      "relhumavg",
-      "relhummax",
-      "relhummin",
-      "precip"
-    ),
-    na = c("", "NA", "--", -9999),
-    skip = 6
-  )
-
-dataAll.meteo.df <- dataAll.meteo.df %>% mutate(date = mdy(date),
-                                                date = ymd_hms(paste(date, hms::as.hms(0)), tz = "Pacific/Honolulu"))
-                                                # date = force_tz(date, "Pacific/Honolulu"))
-
-#create hourly time stamps
-time.index.60 <- seq(from = ymd_hms(paste(
-  first(dataAll.meteo.df$date), hms::as.hms(0)
-)),
-to = ymd_hms(paste(
-  last(dataAll.meteo.df$date), hms::as.hms(60 * 60 * 24)
-)),
-by = "1 hour") %>% force_tz("Pacific/Honolulu")
-
-# combine daily data with hourly time stamps
-dataAll.meteo60.df <- dataAll.meteo.df %>%
-  full_join(as_tibble(x = list(date = time.index.60))) %>%
-  arrange(date)
-
-# convert data to xts
-dataAll.meteo60.xts <-
-  xts(
-    x = select(dataAll.meteo60.df,-date),
-    order.by = ymd_hms(dataAll.meteo60.df$date, tz = "Pacific/Honolulu")
-  )
-
-# interpolate xts to hourly series
-dataAll.meteo60int.xts <- na.spline(dataAll.meteo60.xts)
-#dataAll.meteo60int.xts <- na.approx(dataAll.meteo60.xts)
-
-# combine time with data from xts
-dataAll.meteo60.df <-
-  bind_cols(as.tibble(x = list(interv60.td = index(
-    dataAll.meteo60int.xts
-  ))), as.tibble(dataAll.meteo60int.xts))
-
-# combine hourly meteorogical values with the hourly data set
-dataAll.60.df <- dataAll.60.df %>%
-  full_join(dataAll.meteo60.df) %>%
-  arrange(interv60.td)
-
-
-##################
 # TEST CODE BELOW THIS LINE
 ##################
 
 plot(dataAll.60.df$airtempavg)
 plot(dataAll.meteo.df$airtempavg)
+plot(dataAll.60.df$precip[dataAll.60.df$precip<0])
+
+
