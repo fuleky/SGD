@@ -45,12 +45,12 @@ dataAll.sniff.df <- dataAll.sniff.df %>%
 
 # calculate cps of Bi-214 609 keV peak so divide AreaB by Counting
 # calculate cps of K-40 1460 keV peak so divide AreaK by Counting
-dataAll.sniff.df <- dataAll.sniff.df %>% mutate(cpsB = AreaB / Counting,
+dataAll.sniff.df <- dataAll.sniff.df %>% mutate(Rn = AreaB / Counting / 0.16746637*1000,
                                                 cpsK = AreaK / Counting)
 
-# replace NA in cpsB to 0.001116442
+# replace NA in Rn to 0.001116442
 # replace NA in cpsK to 0.2 but decided that this is not needed
-dataAll.sniff.df <- dataAll.sniff.df %>% mutate(cpsB = if_else(is.na(cpsB), 0.001116442, cpsB))
+dataAll.sniff.df <- dataAll.sniff.df %>% mutate(Rn = if_else(is.na(Rn), 0.001116442, Rn))
 # cpsK = if_else(is.na(cpsK), 0.2, cpsK)
 
 # get sniffer datetimes
@@ -64,48 +64,77 @@ dataAll.sniff.df <- dataAll.sniff.df %>% mutate(
   sniff.td = force_tz(sniff.td, "Pacific/Honolulu")
 )
 
-# convert to xts
-# sniff.xts <- xts(x = select(dataAll.sniff.df,cpsB:cpsK), order.by = dataAll.sniff.df$sniff.td)
-# tzone(sniff.xts)
+#create hourly time stamps
+time.index.60 <- seq(from = ymd_hms(paste(date(first(dataAll.sniff.df$sniff.td)), hms::as.hms(0))), 
+                     to = ymd_hms(paste(date(last(dataAll.sniff.df$sniff.td)), hms::as.hms(60 * 60 * 24))), 
+                     by = "1 hour") %>% force_tz("Pacific/Honolulu")
 
-# aggregate observations within an hour using dplyr
-dataAll.sniff60.df <- dataAll.sniff.df %>%
-  # create factor levels for each hour
-  mutate(interv60.td = cut(sniff.td, "1 hour", right = TRUE)) %>%
-  # group and summarize data based on factor levels
-  group_by(interv60.td) %>%
-  summarise(
-    cpsB60.mean = mean(cpsB),
-    cpsK60.mean = mean(cpsK),
-    runcB60.mean = mean(SigAB / AreaB),
-    runcK60.mean = mean(SigAK / AreaK)
-  ) %>%
-  # convert factor levels to datetime
-  mutate(
-    interv60.td = ymd_hms(interv60.td) + 60 * 60,
-    interv60.td = force_tz(interv60.td, "Pacific/Honolulu")
-  ) %>%
-  # order data based on time
+# combine data with hourly time stamps
+dataAll.sniff.df <- dataAll.sniff.df %>%
+  full_join(as_tibble(x = list(sniff.td = time.index.60))) %>%
+  arrange(sniff.td)
+
+# convert data to xts
+dataAll.sniff.xts <- xts(x = select(dataAll.sniff.df, Rn), 
+                         order.by = ymd_hms(dataAll.sniff.df$sniff.td, tz = "Pacific/Honolulu"))
+
+# find 3 consequtive NAs and find the range of the NAs
+cons.na <-
+  is.na(lag(dataAll.sniff.xts)) &
+  is.na(dataAll.sniff.xts) &
+  is.na(lag(dataAll.sniff.xts, k = -1))
+cons.na <- lag(cons.na) | lag(cons.na, k = -1)
+
+# interpolate xts to hourly series
+#dataAll.sniff.xts <- na.spline(dataAll.sniff.xts)
+dataAll.sniff.xts <- na.approx(dataAll.sniff.xts)
+
+# set consequtive NAs to NAs
+dataAll.sniff.xts[cons.na] <- NA
+
+# combine time with data from xts
+dataAll.sniff60.df <-
+  as_tibble(x = list(interv60.td = time.index.60)) %>%
+  inner_join(as.tibble(list(
+    interv60.td = ymd_hms(dataAll.sniff.df$sniff.td, tz = "Pacific/Honolulu"),
+    Rn60 = drop(coredata(dataAll.sniff.xts))))) %>%
   arrange(interv60.td)
 
-# fill in skipped hours in cpsB variable by averaging over the previous and next observation
-# create a variable containing regular hourly time stamps
-time.index.60 <- seq(
-  from = first(dataAll.sniff60.df$interv60.td),
-  to = last(dataAll.sniff60.df$interv60.td),
-  by = "1 hour"
-) %>% force_tz("Pacific/Honolulu")
-# merge the data with regular time stamps
-dataAll.sniff60.df <- dataAll.sniff60.df %>%
-  full_join(as_tibble(x = list(interv60.td = time.index.60))) %>%
-  arrange(interv60.td)
-# calculate the average pre-and-post time t in a temporary variable cpsB60.mean.fill
-cpsB60.mean.fill = (lag(dataAll.sniff60.df$cpsB60.mean) + lead(dataAll.sniff60.df$cpsB60.mean)) / 2
-# fill in the values for the NA
-dataAll.sniff60.df$cpsB60.mean[!complete.cases(dataAll.sniff60.df$cpsB60.mean)] <-
-  cpsB60.mean.fill[!complete.cases(dataAll.sniff60.df$cpsB60.mean)]
-# remove the temporary variable cpsB60.mean.fill from the data set
-rm(cpsB60.mean.fill)
+# # aggregate observations within an hour using dplyr
+# dataAll.sniff60.df <- dataAll.sniff.df %>%
+#   # create factor levels for each hour
+#   mutate(interv60.td = cut(sniff.td, "1 hour", right = TRUE)) %>%
+#   # group and summarize data based on factor levels
+#   group_by(interv60.td) %>%
+#   summarise(
+#     Rn60 = mean(Rn)
+#   ) %>%
+#   # convert factor levels to datetime
+#   mutate(
+#     interv60.td = ymd_hms(interv60.td) + 60 * 60,
+#     interv60.td = force_tz(interv60.td, "Pacific/Honolulu")
+#   ) %>%
+#   # order data based on time
+#   arrange(interv60.td)
+# 
+# # fill in skipped hours in Rn variable by averaging over the previous and next observation
+# # create a variable containing regular hourly time stamps
+# time.index.60 <- seq(
+#   from = first(dataAll.sniff60.df$interv60.td),
+#   to = last(dataAll.sniff60.df$interv60.td),
+#   by = "1 hour"
+# ) %>% force_tz("Pacific/Honolulu")
+# # merge the data with regular time stamps
+# dataAll.sniff60.df <- dataAll.sniff60.df %>%
+#   full_join(as_tibble(x = list(interv60.td = time.index.60))) %>%
+#   arrange(interv60.td)
+# # calculate the average pre-and-post time t in a temporary variable Rn60.fill
+# Rn60.fill = (lag(dataAll.sniff60.df$Rn60) + lead(dataAll.sniff60.df$Rn60)) / 2
+# # fill in the values for the NA
+# dataAll.sniff60.df$Rn60[!complete.cases(dataAll.sniff60.df$Rn60)] <-
+#   Rn60.fill[!complete.cases(dataAll.sniff60.df$Rn60)]
+# # remove the temporary variable Rn60.fill from the data set
+# rm(Rn60.fill)
 
 ##################
 # CTD OCEAN
@@ -485,7 +514,7 @@ pdf(
 )
 
 # plot data in combined data set, check what is missing
-for (var.i in 2:24) {
+for (var.i in 2:21) {
   #var.i = 12
   
   # plot the data (grey), 24 hour moving average (blue), and missing values (red)
@@ -528,7 +557,7 @@ for (var.i in 2:24) {
 dev.off()
 
 ##################
-# SAMPLE PLOT OF DATA
+# SAMPLE PLOTS OF DATA
 ##################
 
 # plot the data
@@ -536,12 +565,27 @@ data.plot <-
   ggplot(data = dataAll.60.df) +
   geom_point(mapping = aes(
     x = interv60.td,
-    y = cpsB60.mean,
+    y = Rn60,
     #color = sal.ctd60.mean
     color = gw60.mean
   )) +
   scale_color_gradientn(colors = rainbow(10)) +
-  ggtitle("cpsB-water") + xlab("time") + ylab("cpsB")
+  ggtitle("Rn-water") + xlab("time") + ylab("Rn")
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.60.df) +
+  geom_point(mapping = aes(x = water.owl60.mean-2*lag(water.owl60.mean)+lag(water.owl60.mean, 2),
+                           y = Rn60,
+                           #color = sal.ctd60.mean
+                           color = water.owl60.mean)) +
+  scale_color_gradientn(colors = rainbow(5)) +
+  geom_smooth(mapping = aes(x = water.owl60.mean-lag(water.owl60.mean),
+                            y = Rn60), color = "red") +
+  ggtitle("Rn-water") + xlab("water") + ylab("Rn")
 
 # render the plot
 print(data.plot)
@@ -554,4 +598,8 @@ plot(dataAll.60.df$airtempavg)
 plot(dataAll.meteo.df$airtempavg)
 plot(dataAll.60.df$precip[dataAll.60.df$precip<0])
 
-
+# spectal decomposition
+# seasonal decomposition
+# rising, falling tide
+# correlogram lags, leads
+# 
