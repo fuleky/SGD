@@ -2,6 +2,7 @@
 # SETTING UP ENVIRONMENT
 ##################
 
+rm(list = ls())
 # Sys.getenv("TZ")
 Sys.setenv(TZ = "Pacific/Honolulu")
 # Sys.getenv()
@@ -64,40 +65,41 @@ dataAll.sniff.df <- dataAll.sniff.df %>% mutate(
   sniff.td = force_tz(sniff.td, "Pacific/Honolulu")
 )
 
-#create hourly time stamps
+# create hourly time stamps
 time.index.60 <- seq(from = ymd_hms(paste(date(first(dataAll.sniff.df$sniff.td)), hms::as.hms(0))), 
                      to = ymd_hms(paste(date(last(dataAll.sniff.df$sniff.td)), hms::as.hms(60 * 60 * 24))), 
                      by = "1 hour") %>% force_tz("Pacific/Honolulu")
 
-# combine data with hourly time stamps
-dataAll.sniff.df <- dataAll.sniff.df %>%
+# combine Rn data with hourly time stamps
+dataAll.sniff60.df <- dataAll.sniff.df %>%
+  select(sniff.td, Rn) %>%
   full_join(as_tibble(x = list(sniff.td = time.index.60))) %>%
   arrange(sniff.td)
 
-# convert data to xts
-dataAll.sniff.xts <- xts(x = select(dataAll.sniff.df, Rn), 
-                         order.by = ymd_hms(dataAll.sniff.df$sniff.td, tz = "Pacific/Honolulu"))
-
 # find 3 consequtive NAs and find the range of the NAs
 cons.na <-
-  is.na(lag(dataAll.sniff.xts)) &
-  is.na(dataAll.sniff.xts) &
-  is.na(lag(dataAll.sniff.xts, k = -1))
-cons.na <- lag(cons.na) | lag(cons.na, k = -1)
+  is.na(lag(dataAll.sniff60.df$Rn)) &
+  is.na(dataAll.sniff60.df$Rn) &
+  is.na(lead(dataAll.sniff60.df$Rn))
+cons.na <- lag(cons.na) | lead(cons.na)
+
+# convert data to xts
+dataAll.sniff60.xts <- xts(x = select(dataAll.sniff60.df, Rn), 
+                         order.by = ymd_hms(dataAll.sniff60.df$sniff.td, tz = "Pacific/Honolulu"))
 
 # interpolate xts to hourly series
-#dataAll.sniff.xts <- na.spline(dataAll.sniff.xts)
-dataAll.sniff.xts <- na.approx(dataAll.sniff.xts)
+#dataAll.sniff60.xts <- na.spline(dataAll.sniff60.xts, na.rm = FALSE)
+dataAll.sniff60.xts <- na.approx(dataAll.sniff60.xts, na.rm = FALSE)
 
 # set consequtive NAs to NAs
-dataAll.sniff.xts[cons.na] <- NA
+dataAll.sniff60.xts[cons.na] <- NA
 
 # combine time with data from xts
 dataAll.sniff60.df <-
   as_tibble(x = list(interv60.td = time.index.60)) %>%
   inner_join(as.tibble(list(
-    interv60.td = ymd_hms(dataAll.sniff.df$sniff.td, tz = "Pacific/Honolulu"),
-    Rn60 = drop(coredata(dataAll.sniff.xts))))) %>%
+    interv60.td = index(dataAll.sniff60.xts),
+    Rn60 = drop(coredata(dataAll.sniff60.xts))))) %>%
   arrange(interv60.td)
 
 # # aggregate observations within an hour using dplyr
@@ -177,10 +179,6 @@ dataAll.ctd.df <- dataAll.ctd.df %>%
 dataAll.ctd.df <-
   rename(dataAll.ctd.df, temp.ctd = Temperature, sal.ctd = Salinity)
 
-# convert to xts
-# ctd.xts <- xts(x = select(dataAll.ctd.df, temp.ctd:sal.ctd), order.by = dataAll.ctd.df$Date)
-# tzone(ctd.xts)
-
 # aggregate observations within an hour using dplyr
 dataAll.ctd60.df <- dataAll.ctd.df %>%
   # create factor levels for each hour
@@ -231,10 +229,6 @@ dataAll.owl.df <-
     sigma.owl = Sigma
   )
 
-# convert to xts
-# owl.xts <- xts(x = select(dataAll.owl.df, water.owl:sigma.owl), order.by = dataAll.owl.df$owl.td)
-# tzone(owl.xts)
-
 # aggregate observations within an hour using dplyr
 dataAll.owl60.df <- dataAll.owl.df %>%
   # create factor levels for each hour
@@ -246,7 +240,13 @@ dataAll.owl60.df <- dataAll.owl.df %>%
   # convert factor levels to datetime
   mutate(
     interv60.td = ymd_hms(interv60.td) + 60 * 60,
-    interv60.td = force_tz(interv60.td, "Pacific/Honolulu")
+    interv60.td = force_tz(interv60.td, "Pacific/Honolulu"),
+    # cludge fix: the first observation has NA time: replace it with first obs.
+    interv60.td =  ifelse(
+      is.na(interv60.td),
+      ymd_hms(paste(ymd(first(dataAll.owl.df$owl.td)), hms::hms(0)), tz = "Pacific/Honolulu"),
+      interv60.td),
+    interv60.td = as_datetime(interv60.td, tz = "Pacific/Honolulu")
   ) %>%
   # order data based on time
   arrange(interv60.td)
@@ -285,10 +285,6 @@ dataAll.pond.df <-
     sal.pond = Salinity,
     depth.pond = Depth
   )
-
-# convert to xts
-# pond.xts <- xts(x = select(dataAll.pond.df, temp.pond:depth.pond), order.by = dataAll.pond.df$Date)
-# tzone(pond.xts)
 
 # aggregate observations within an hour using dplyr
 dataAll.pond60.df <- dataAll.pond.df %>%
@@ -419,8 +415,14 @@ dataAll.gw60.df <- dataAll.gw15.df %>%
   # convert factor levels to datetime
   mutate(
     interv60.td = ymd_hms(interv60.td) + 60 * 60,
-    interv60.td = force_tz(interv60.td, "Pacific/Honolulu")
-  ) %>%
+    interv60.td = force_tz(interv60.td, "Pacific/Honolulu"),
+    # cludge fix: the first observation has NA time: replace it with first obs.
+    interv60.td =  ifelse(
+      is.na(interv60.td),
+      ymd_hms(paste(ymd(first(dataAll.gw15.df$gw15.td)), hms::hms(0)), tz = "Pacific/Honolulu"),
+      interv60.td),
+    interv60.td = as_datetime(interv60.td, tz = "Pacific/Honolulu")
+    ) %>%
   # order gwlevel data based on time
   arrange(interv60.td)
 
@@ -567,10 +569,42 @@ data.plot <-
     x = interv60.td,
     y = Rn60,
     #color = sal.ctd60.mean
-    color = gw60.mean
+    #color = gw60.mean
+    color = ifelse(water.owl60.mean-2*lag(water.owl60.mean)+lag(water.owl60.mean, 2)>-0.12, water.owl60.mean-2*lag(water.owl60.mean)+lag(water.owl60.mean, 2), NA)
   )) +
-  scale_color_gradientn(colors = rainbow(10)) +
+  scale_color_gradient2() +
   ggtitle("Rn-water") + xlab("time") + ylab("Rn")
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.60.df) +
+  geom_point(mapping = aes(
+    x = interv60.td,
+    y = Rn60,
+    #color = sal.ctd60.mean
+    #color = gw60.mean
+    color = water.owl60.mean-2*lag(water.owl60.mean)+lag(water.owl60.mean, 2)
+  )) +
+  scale_color_gradient2(midpoint = -0.15) +
+  ggtitle("Rn-water") + xlab("time") + ylab("Rn")
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.60.df) +
+  geom_point(mapping = aes(x = water.owl60.mean-2*lag(water.owl60.mean)+lag(water.owl60.mean, 2),
+                           y = Rn60,
+                           #color = sal.ctd60.mean
+                           color = water.owl60.mean)) +
+  scale_color_gradientn(colors = rainbow(5)) +
+  geom_smooth(mapping = aes(x = water.owl60.mean-lag(water.owl60.mean),
+                            y = Rn60), color = "red") +
+  ggtitle("Rn-water") + xlab("water") + ylab("Rn")
 
 # render the plot
 print(data.plot)
