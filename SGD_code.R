@@ -498,14 +498,14 @@ dataAll.60.df <- dataAll.gw60.df %>%
   full_join(dataAll.meteo60.df) %>%
   arrange(interv60.td)
 
+##################
+# DIAGNOSTIC PLOT OF DATA
+##################
+
 # define a (24 hour) backward moving average function
 ma <- function(x, n = 24) {
   stats::filter(x, rep(1 / n, n), sides = 1)
 }
-
-##################
-# DIAGNOSTIC PLOT OF DATA
-##################
 
 # save the plots in a single pdf file
 pdf(
@@ -562,17 +562,43 @@ dev.off()
 # SAMPLE PLOTS OF DATA
 ##################
 
+# calculate some statisics
+dataAll.60.df <- dataAll.60.df %>% mutate(
+  # slope of owl (backward and centered)
+  slop.b.owl = water.owl60.mean - lag(water.owl60.mean),
+  slop.c.owl = (lead(water.owl60.mean) - lag(water.owl60.mean)) / 2,
+  # curvature of owl (backward and centered)
+  curv.b.owl =
+    water.owl60.mean - 2 * lag(water.owl60.mean) + lag(water.owl60.mean, 2),
+  curv.c.owl =
+    lead(water.owl60.mean) - 2 * water.owl60.mean + lag(water.owl60.mean),
+  # standardized change of owl
+  rel.b.owl = (water.owl60.mean - (4 * lag(water.owl60.mean, 6) + 1 * lag(water.owl60.mean, 7)) / 5) / 
+    ((water.owl60.mean + (4 * lag(water.owl60.mean, 6) + 1 * lag(water.owl60.mean, 7)) / 5) / 2),
+  # standardized change of Rn
+  rel.b.Rn = (Rn60 - (4 * lag(Rn60, 6) + 1 * lag(Rn60, 7)) / 5) / 
+    ((Rn60 + (4 * lag(Rn60, 6) + 1 * lag(Rn60, 7)) / 5) / 2),
+  rel.b1.Rn = (Rn60 - lag(Rn60)) / ((Rn60 + lag(Rn60)) / 2)
+)
+# remove Rn = NA from the dataset
+dataAll.60.Rn.df <- dataAll.60.df %>% filter(!is.na(Rn60))
+
 # plot the data
 data.plot <-
-  ggplot(data = dataAll.60.df) +
+  ggplot(data = dataAll.60.Rn.df) +
   geom_point(mapping = aes(
     x = interv60.td,
     y = Rn60,
-    #color = sal.ctd60.mean
-    #color = gw60.mean
-    color = ifelse(water.owl60.mean-2*lag(water.owl60.mean)+lag(water.owl60.mean, 2)>-0.12, water.owl60.mean-2*lag(water.owl60.mean)+lag(water.owl60.mean, 2), NA)
-  )) +
-  scale_color_gradient2() +
+    color = ifelse(curv.b.owl > -0.12, curv.b.owl, NA)
+  ),
+  alpha = 0.8) +
+  scale_color_gradient2(
+    low = "red",
+    high = "blue",
+    mid = "white",
+    midpoint = 0,
+    guide = guide_colorbar(title = "curvature")
+  ) +
   ggtitle("Rn-water") + xlab("time") + ylab("Rn")
 
 # render the plot
@@ -580,46 +606,57 @@ print(data.plot)
 
 # plot the data
 data.plot <-
-  ggplot(data = dataAll.60.df) +
+  ggplot(data = dataAll.60.Rn.df) +
+  geom_point(mapping = aes(
+    x = slop.c.owl,
+    y = ifelse(curv.c.owl > -0.12, curv.c.owl, NA),
+    color = rel.b.Rn
+  ),
+  alpha = 0.8) +
+  scale_color_gradientn(colors = rainbow(5),
+                        guide = guide_colorbar(title = "Rn")) +
+  # scale_color_gradient2(
+  #   low = "red",
+  #   high = "blue",
+  #   mid = "white",
+  #   midpoint = 0,
+  #   guide = guide_colorbar(title = "Rn")
+  # ) +
+  ggtitle("Rn-water") + xlab("slope") + ylab("curvature")
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.60.Rn.df) +
   geom_point(mapping = aes(
     x = interv60.td,
+    y = water.owl60.mean,
+    color = rel.b.Rn
+  ),
+  alpha = 0.8) +
+  scale_color_gradientn(colors = rainbow(5),
+                        guide = guide_colorbar(title = "std Rn")) +
+  ggtitle("Rn-water") + xlab("time") + ylab("water level")
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.60.Rn.df) +
+  geom_point(mapping = aes(
+    x = ifelse(curv.c.owl > -0.12, curv.c.owl, NA),
     y = Rn60,
-    #color = sal.ctd60.mean
-    #color = gw60.mean
-    color = water.owl60.mean-2*lag(water.owl60.mean)+lag(water.owl60.mean, 2)
-  )) +
-  scale_color_gradient2(midpoint = -0.15) +
-  ggtitle("Rn-water") + xlab("time") + ylab("Rn")
-
-# render the plot
-print(data.plot)
-
-# plot the data
-data.plot <-
-  ggplot(data = dataAll.60.df) +
-  geom_point(mapping = aes(x = water.owl60.mean-2*lag(water.owl60.mean)+lag(water.owl60.mean, 2),
-                           y = Rn60,
-                           #color = sal.ctd60.mean
-                           color = water.owl60.mean)) +
-  scale_color_gradientn(colors = rainbow(5)) +
-  geom_smooth(mapping = aes(x = water.owl60.mean-lag(water.owl60.mean),
+    color = water.owl60.mean
+  ),
+  alpha = 0.8) +
+  scale_color_gradientn(colors = rainbow(5),
+                        guide = guide_colorbar(title = "water level")) +
+  geom_smooth(mapping = aes(x = slop.c.owl,
                             y = Rn60), color = "red") +
-  ggtitle("Rn-water") + xlab("water") + ylab("Rn")
-
-# render the plot
-print(data.plot)
-
-# plot the data
-data.plot <-
-  ggplot(data = dataAll.60.df) +
-  geom_point(mapping = aes(x = water.owl60.mean-2*lag(water.owl60.mean)+lag(water.owl60.mean, 2),
-                           y = Rn60,
-                           #color = sal.ctd60.mean
-                           color = water.owl60.mean)) +
-  scale_color_gradientn(colors = rainbow(5)) +
-  geom_smooth(mapping = aes(x = water.owl60.mean-lag(water.owl60.mean),
-                            y = Rn60), color = "red") +
-  ggtitle("Rn-water") + xlab("water") + ylab("Rn")
+  ggtitle("Rn-water") + xlab("curvature") + ylab("Rn")
 
 # render the plot
 print(data.plot)
