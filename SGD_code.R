@@ -10,7 +10,6 @@ Sys.setenv(TZ = "Pacific/Honolulu")
 # set path to working folder
 setwd("~/Google Drive/SGD/")
 library("xts")
-library("gridExtra")
 library("tidyverse")
 library("lubridate")
 
@@ -185,8 +184,8 @@ dataAll.ctd60.df <- dataAll.ctd.df %>%
   mutate(interv60.td = cut(Date, "1 hour", right = TRUE)) %>%
   # group and summarize data based on factor levels
   group_by(interv60.td) %>%
-  summarise(temp.ctd60.mean = mean(temp.ctd),
-            sal.ctd60.mean = mean(sal.ctd)) %>%
+  summarise(temp.ctd60 = mean(temp.ctd),
+            sal.ctd60 = mean(sal.ctd)) %>%
   # convert factor levels to datetime
   mutate(
     interv60.td = ymd_hms(interv60.td) + 60 * 60,
@@ -235,8 +234,8 @@ dataAll.owl60.df <- dataAll.owl.df %>%
   mutate(interv60.td = cut(owl.td, "1 hour", right = TRUE)) %>%
   # group and summarize data based on factor levels
   group_by(interv60.td) %>%
-  summarise(water.owl60.mean = mean(water.owl),
-            sigma.owl60.mean = mean(sigma.owl)) %>%
+  summarise(water.owl60 = mean(water.owl),
+            sigma.owl60 = mean(sigma.owl)) %>%
   # convert factor levels to datetime
   mutate(
     interv60.td = ymd_hms(interv60.td) + 60 * 60,
@@ -293,9 +292,9 @@ dataAll.pond60.df <- dataAll.pond.df %>%
   # group and summarize data based on factor levels
   group_by(interv60.td) %>%
   summarise(
-    temp.pond60.mean = mean(temp.pond),
-    sal.pond60.mean = mean(sal.pond),
-    depth.pond60.mean = mean(depth.pond)
+    temp.pond60 = mean(temp.pond),
+    sal.pond60 = mean(sal.pond),
+    depth.pond60 = mean(depth.pond)
   ) %>%
   # convert factor levels to datetime
   mutate(
@@ -411,7 +410,7 @@ dataAll.gw60.df <- dataAll.gw15.df %>%
   mutate(interv60.td = cut(gw15.td, "1 hour", right = TRUE)) %>%
   # group and summarize gwlevel data based on factor levels
   group_by(interv60.td) %>%
-  summarise(gw60.mean = mean(gwlevel)) %>%
+  summarise(gw60 = mean(gwlevel)) %>%
   # convert factor levels to datetime
   mutate(
     interv60.td = ymd_hms(interv60.td) + 60 * 60,
@@ -499,13 +498,106 @@ dataAll.60.df <- dataAll.gw60.df %>%
   arrange(interv60.td)
 
 ##################
-# DIAGNOSTIC PLOT OF DATA
+# ADD TRANSFORMATIONS OF THE DATA
 ##################
 
 # define a (24 hour) backward moving average function
-ma <- function(x, n = 24) {
-  stats::filter(x, rep(1 / n, n), sides = 1)
+ma <- function(x, q = 24) {
+  stats::filter(x, rep(1 / q, q), sides = 1)
 }
+
+# calculate transformations and save them in the same variable
+dataAll.60.df <- dataAll.60.df %>% mutate(
+  # change/slope of owl (backward and centered)
+  chg.b.owl = water.owl60 - lag(water.owl60),
+  chg.c.owl = (lead(water.owl60) - lag(water.owl60)) / 2,
+  # change^2/curvature of owl (backward and centered)
+  chg2.b.owl =
+    water.owl60 - 2 * lag(water.owl60) + lag(water.owl60, 2),
+  chg2.c.owl =
+    lead(water.owl60) - 2 * water.owl60 + lag(water.owl60),
+  # slope/relative change of owl
+  slop.b6.owl = (water.owl60 - (4 * lag(water.owl60, 6) + 1 * lag(water.owl60, 7)) / 5) / 
+    ((water.owl60 + (4 * lag(water.owl60, 6) + 1 * lag(water.owl60, 7)) / 5) / 2),
+  # curvature/relative change^2 of owl
+  curv.b6.owl = ((water.owl60 - (4 * lag(water.owl60, 6) + 1 * lag(water.owl60, 7)) / 5) -
+                   (lag(water.owl60, 1) - (4 * lag(water.owl60, 7) + 1 * lag(water.owl60, 8)) / 5)) / 
+    ((((water.owl60 + (4 * lag(water.owl60, 6) + 1 * lag(water.owl60, 7)) / 5) / 2) + 
+        ((lag(water.owl60, 1) + (4 * lag(water.owl60, 7) + 1 * lag(water.owl60, 8)) / 5) / 2)) / 2),
+  # slope/relative change of Rn
+  slop.b6.Rn = (Rn60 - (4 * lag(Rn60, 6) + 1 * lag(Rn60, 7)) / 5) / 
+    ((Rn60 + (4 * lag(Rn60, 6) + 1 * lag(Rn60, 7)) / 5) / 2),
+  slop.b.Rn = (Rn60 - lag(Rn60)) / ((Rn60 + lag(Rn60)) / 2),
+  # relative change of gw
+  slop.b6.gw = (gw60 - (4 * lag(gw60, 6) + 1 * lag(gw60, 7)) / 5) / 
+    ((gw60 + (4 * lag(gw60, 6) + 1 * lag(gw60, 7)) / 5) / 2),
+  # gradient gw - water.owl60
+  grad = gw60-water.owl60
+)
+
+# monthly averages
+dataAll.mo.df <- dataAll.60.df %>% 
+  mutate(calmon = month(interv60.td)
+         # ,
+         # calyear = year(interv60.td)
+         ) %>%
+  # filter(complete.cases(.)) %>%
+  group_by(#calyear, 
+           calmon) %>%
+  summarize(Rn.mo = mean(Rn60, na.rm = TRUE), gw.mo = mean(gw60, na.rm = TRUE), owl.mo = mean(water.owl60, na.rm = TRUE), precip.mo = mean(precip, na.rm = TRUE), grad.mo = mean(grad, na.rm = TRUE))
+  
+# remove Rn = NA from the dataset
+dataAll.60.Rn.df <- dataAll.60.df %>% filter(!is.na(Rn60))
+
+# get the longest sequence of continuous observations
+dataAll.60.Rn.MaxLen.df <- dataAll.60.df %>%
+  select(interv60.td, Rn60, water.owl60) %>%
+  filter(with(rle(complete.cases(.)), 
+              rep(lengths == max(lengths[values]) & values, lengths)))
+
+##################
+# SPECTRAL ANALYSIS
+##################
+
+# spectral analysis of dataAll.60.Rn.MaxLen.df 
+Rn60.spec <- spectrum(as.ts(xts(x = dataAll.60.Rn.MaxLen.df$Rn60, 
+                                order.by = ymd_hms(dataAll.60.Rn.MaxLen.df$interv60.td, 
+                                                   tz = "Pacific/Honolulu"))),
+                      log="no", span=3, demean = TRUE, detrend = TRUE, plot=FALSE)
+# sampling interval in terms of days
+samp.int <- 1 / (24*3600)
+# cycles per day
+Rn60.spec$scaledfreq <- Rn60.spec$freq / samp.int
+# get variance under the curve
+Rn60.spec$scaledspec <- 2 * Rn60.spec$spec
+# combine columns in a new data frame
+Rn60.scaledspec <- bind_cols(scaledfreq = Rn60.spec$scaledfreq, scaledper = 1/Rn60.spec$scaledfreq, scaledspec = Rn60.spec$scaledspec)
+
+# spectral analysis of dataAll.60.Rn.MaxLen.df 
+owl.spec <- spectrum(as.ts(xts(x = dataAll.60.Rn.MaxLen.df$water.owl60, 
+                                order.by = ymd_hms(dataAll.60.Rn.MaxLen.df$interv60.td, 
+                                                   tz = "Pacific/Honolulu"))),
+                      log="no", span=3, demean = TRUE, detrend = TRUE, plot=FALSE)
+# sampling interval in terms of days
+# samp.int <- 1 / (24*3600)
+# cycles per day
+owl.spec$scaledfreq <- owl.spec$freq / samp.int
+# get variance under the curve
+owl.spec$scaledspec <- 2 * owl.spec$spec
+# combine columns in a new data frame
+owl.scaledspec <- bind_cols(scaledfreq = owl.spec$scaledfreq, scaledper = 1/owl.spec$scaledfreq, scaledspec = owl.spec$scaledspec)
+
+##################
+# EXPORT THE DATA
+##################
+
+# write_csv(dataAll.60.df, "dataAll60.csv")
+# write_csv(select(dataAll.60.df, interv60.td, Rn60), "dataRn60.csv")
+# write_csv(select(dataAll.60.df, interv60.td, Rn60, water.owl60), "dataRn60OWL.csv")
+
+##################
+# DIAGNOSTIC PLOT OF DATA
+##################
 
 # save the plots in a single pdf file
 pdf(
@@ -516,7 +608,7 @@ pdf(
 )
 
 # plot data in combined data set, check what is missing
-for (var.i in 2:21) {
+for (var.i in 2:31) {
   #var.i = 12
   
   # plot the data (grey), 24 hour moving average (blue), and missing values (red)
@@ -526,10 +618,11 @@ for (var.i in 2:21) {
       mapping = aes(x = dataAll.60.df$interv60.td,
                     y = dataAll.60.df[[var.i]])
     ) +
-    geom_line(color = "grey70") +
+    geom_line(color = "grey70", 
+              alpha = 0.5) +
     geom_line(y = ma(dataAll.60.df[[var.i]]),
               color = "blue",
-              alpha = 0.8) +
+              alpha = 0.5) +
     geom_linerange(mapping = aes(
       # ymin = 0,
       ymin = ifelse(
@@ -545,7 +638,8 @@ for (var.i in 2:21) {
         NA
       )
     ),
-    color = "red") +
+    color = "red", alpha = 0.2) +
+    theme_minimal() + 
     ggtitle(names(dataAll.60.df)[var.i]) + xlab("time") + ylab("units")
   
   # save the plot with the name of the variable and then render it
@@ -562,34 +656,13 @@ dev.off()
 # SAMPLE PLOTS OF DATA
 ##################
 
-# calculate some statisics
-dataAll.60.df <- dataAll.60.df %>% mutate(
-  # change/slope of owl (backward and centered)
-  chg.b.owl = water.owl60.mean - lag(water.owl60.mean),
-  chg.c.owl = (lead(water.owl60.mean) - lag(water.owl60.mean)) / 2,
-  # change^2/curvature of owl (backward and centered)
-  chg2.b.owl =
-    water.owl60.mean - 2 * lag(water.owl60.mean) + lag(water.owl60.mean, 2),
-  chg2.c.owl =
-    lead(water.owl60.mean) - 2 * water.owl60.mean + lag(water.owl60.mean),
-  # slope/relative change of owl
-  slop.b6.owl = (water.owl60.mean - (4 * lag(water.owl60.mean, 6) + 1 * lag(water.owl60.mean, 7)) / 5) / 
-    ((water.owl60.mean + (4 * lag(water.owl60.mean, 6) + 1 * lag(water.owl60.mean, 7)) / 5) / 2),
-  # curvature/relative change^2 of owl
-  curv.b6.owl = ((water.owl60.mean - (4 * lag(water.owl60.mean, 6) + 1 * lag(water.owl60.mean, 7)) / 5) -
-    (lag(water.owl60.mean, 1) - (4 * lag(water.owl60.mean, 7) + 1 * lag(water.owl60.mean, 8)) / 5)) / 
-    ((((water.owl60.mean + (4 * lag(water.owl60.mean, 6) + 1 * lag(water.owl60.mean, 7)) / 5) / 2) + 
-    ((lag(water.owl60.mean, 1) + (4 * lag(water.owl60.mean, 7) + 1 * lag(water.owl60.mean, 8)) / 5) / 2)) / 2),
-  # slope/relative change of Rn
-  slop.b6.Rn = (Rn60 - (4 * lag(Rn60, 6) + 1 * lag(Rn60, 7)) / 5) / 
-              ((Rn60 + (4 * lag(Rn60, 6) + 1 * lag(Rn60, 7)) / 5) / 2),
-  slop.b.Rn = (Rn60 - lag(Rn60)) / ((Rn60 + lag(Rn60)) / 2),
-  # relative change of gw
-  slop.b6.gw = (gw60.mean - (4 * lag(gw60.mean, 6) + 1 * lag(gw60.mean, 7)) / 5) / 
-    ((gw60.mean + (4 * lag(gw60.mean, 6) + 1 * lag(gw60.mean, 7)) / 5) / 2)
+# save the plots in a single pdf file
+pdf(
+  "plots_poster.pdf",
+  onefile = TRUE,
+  width = 16 / 9 * 5,
+  height = 5
 )
-# remove Rn = NA from the dataset
-dataAll.60.Rn.df <- dataAll.60.df %>% filter(!is.na(Rn60))
 
 # plot the data
 data.plot <-
@@ -604,6 +677,7 @@ data.plot <-
   scale_color_gradientn(colors = rev(topo.colors(5)),
     guide = guide_colorbar(title = "std water")
   ) +
+  theme_minimal() + 
   ggtitle("Rn-water") + xlab("time") + ylab("Rn")
 
 # render the plot
@@ -627,6 +701,7 @@ data.plot <-
   scale_y_reverse(limits = c(0.1, -0.1)) +
   scale_color_gradientn(colors = heat.colors(5),
                         guide = guide_colorbar(title = "Rn")) +
+  theme_minimal() + 
   ggtitle("Rn-water") + xlab("slope") + ylab("curvature")
 
 # render the plot
@@ -637,12 +712,13 @@ data.plot <-
   ggplot(data = dataAll.60.Rn.df) +
   geom_point(mapping = aes(
     x = interv60.td,
-    y = water.owl60.mean,
+    y = water.owl60,
     color = slop.b6.Rn
   ),
   alpha = 0.3) +
   scale_color_gradientn(colors = rev(heat.colors(5)),
                         guide = guide_colorbar(title = "std Rn")) +
+  theme_minimal() + 
   ggtitle("Rn-water") + xlab("time") + ylab("owl")
 
 # render the plot
@@ -662,6 +738,7 @@ data.plot <-
                         guide = guide_colorbar(title = "gw")) +
   geom_smooth(mapping = aes(x = slop.b6.owl,
                             y = slop.b6.Rn), color = "red") +
+  theme_minimal() + 
   ggtitle("Rn-water") + xlab("owl 6 hour slope") + ylab("Rn 6 hour slope")
 
 # render the plot
@@ -671,7 +748,7 @@ print(data.plot)
 data.plot <-
   ggplot(data = dataAll.60.Rn.df) +
   geom_point(mapping = aes(
-    x = gw60.mean-water.owl60.mean,
+    x = grad,
     y = slop.b6.owl,
     color = slop.b6.Rn #log(Rn60)
   ),
@@ -679,23 +756,428 @@ data.plot <-
   scale_y_continuous(limits = c(-3, 3)) + 
   scale_color_gradientn(colors = rev(heat.colors(5)),
                         guide = guide_colorbar(title = "Rn 6 hour slope")) +
-#  geom_smooth(mapping = aes(x = water.owl60.mean,
-#                            y = gw60.mean), color = "red") +
-  ggtitle("Rn-water") + xlab("gw-owl") + ylab("owl 6 hour slope")
+  theme_minimal() + 
+  ggtitle("Rn-water") + xlab("grad") + ylab("owl 6 hour slope")
 
 # render the plot
 print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.60.df, 
+         mapping = aes(
+           x = dataAll.60.df$interv60.td)) +
+  geom_line(
+    mapping = aes(
+      y = ma(dataAll.60.df$precip, q = 24)
+    ),
+    color = "blue",
+    alpha = 0.5
+  ) +
+  geom_line(
+    mapping = aes(
+      y = ma(dataAll.60.df$gw60, q = 24) * 100 - 200
+    ),
+    color = "red",
+    alpha = 0.5
+  ) +
+  scale_y_continuous(sec.axis = sec_axis( ~ (. + 200) / 100, name = "Ground water level")) +
+  theme_minimal() +
+  labs(title = "Precipitation vs. Ground water level (24 hour ma)", x = "Time", y = "Precipitation") +
+  theme(axis.title.y = element_text(color="blue"),
+        axis.title.y.right = element_text(color="red"))
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.60.df, 
+         mapping = aes(
+           x = dataAll.60.df$interv60.td)) +
+  geom_line(
+    mapping = aes(
+      y = ma(dataAll.60.df$precip, q = 24*30)
+    ),
+    color = "blue",
+    alpha = 0.5
+  ) +
+  geom_line(
+    mapping = aes(
+      y = ma(dataAll.60.df$Rn60, q = 24*30) / 100
+    ),
+    color = "red",
+    alpha = 0.5
+  ) +
+  scale_y_continuous(sec.axis = sec_axis( ~ (. + 0) * 100, name = "Rn")) +
+  theme_minimal() +
+  labs(title = "Precipitation vs. Rn (30 day ma)", x = "Time", y = "Precipitation") +
+  theme(axis.title.y = element_text(color="blue"),
+        axis.title.y.right = element_text(color="red"))
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.60.df, 
+         mapping = aes(
+           x = dataAll.60.df$interv60.td)) +
+  geom_line(
+    mapping = aes(
+      y = ma(dataAll.60.df$Rn60, q = 24 * 30)
+    ),
+    color = "blue",
+    alpha = 0.5
+  ) +
+  geom_line(
+    mapping = aes(
+      y = ma(dataAll.60.df$sal.ctd60, q = 24 * 30) * 100 - 500
+    ),
+    color = "red",
+    alpha = 0.5
+  ) +
+  scale_y_continuous(sec.axis = sec_axis( ~ (. + 500) / 100, name = "Salinity")) +
+  theme_minimal() +
+  labs(title = "Rn vs. Salinity (30 day ma)", x = "Time", y = "Rn") +
+  theme(axis.title.y = element_text(color="blue"),
+        axis.title.y.right = element_text(color="red"))
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.60.df, 
+         mapping = aes(
+           x = dataAll.60.df$interv60.td)) +
+  geom_line(
+    mapping = aes(
+      y = ma(dataAll.60.df$Rn60, q = 24 * 14)
+    ),
+    color = "blue",
+    alpha = 0.5
+  ) +
+  geom_line(
+    mapping = aes(
+      y = ma(dataAll.60.df$water.owl60, q = 24 * 14) * 2000 + 1000
+    ),
+    color = "red",
+    alpha = 0.5
+  ) +
+  scale_y_continuous(sec.axis = sec_axis( ~ (. - 1000) / 2000, name = "Ocean water level")) +
+  theme_minimal() +
+  labs(title = "Rn vs. Ocean water level (14 day ma)", x = "Time", y = "Rn") +
+  theme(axis.title.y = element_text(color="blue"),
+        axis.title.y.right = element_text(color="red"))
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.60.df, 
+         mapping = aes(
+           x = dataAll.60.df$interv60.td)) +
+  geom_line(
+    mapping = aes(
+      y = ma(dataAll.60.df$Rn60, q = 24 * 7)
+    ),
+    color = "blue",
+    alpha = 0.5
+  ) +
+  geom_line(
+    mapping = aes(
+      y = ma(dataAll.60.df$grad, q = 24 * 7) * 2000 - 4000
+    ),
+    color = "red",
+    alpha = 0.5
+  ) +
+  scale_y_continuous(sec.axis = sec_axis( ~ (. + 4000) / 2000, name = "Water gradient")) +
+  theme_minimal() +
+  labs(title = "Rn vs. Water gradient (7 day ma)", x = "Time", y = "Rn") +
+  theme(axis.title.y = element_text(color="blue"),
+        axis.title.y.right = element_text(color="red"))
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.60.df %>% 
+           filter(interv60.td >= "2014-04-01 00:00:00" & interv60.td < "2014-04-14 00:00:00"), 
+         mapping = aes(
+           x = interv60.td)) +
+  geom_line(
+    mapping = aes(
+      y = Rn60
+    ),
+    color = "blue",
+    alpha = 0.5
+  ) +
+  geom_line(
+    mapping = aes(
+      y = water.owl60 * 2000 + 1000
+    ),
+    color = "red",
+    alpha = 0.5
+  ) +
+  scale_y_continuous(sec.axis = sec_axis( ~ (. - 1000) / 2000, name = "Ocean water level")) +
+  theme_minimal() +
+  labs(title = "Rn vs. Ocean water level", x = "Time", y = "Rn") +
+  theme(axis.title.y = element_text(color="blue"),
+        axis.title.y.right = element_text(color="red"))
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.60.Rn.MaxLen.df,
+         mapping = aes(
+           x = interv60.td)) +
+  geom_line(
+    mapping = aes(
+      y = ma(Rn60, 48)
+      # y = Rn60
+    ),
+    color = "blue",
+    alpha = 0.5
+  ) +
+  geom_line(
+    mapping = aes(
+      y = ma(water.owl60, 48) * 2000 + 500
+      # y = water.owl60 * 2000 + 500
+    ),
+    color = "red",
+    alpha = 0.5
+  ) +
+  scale_y_continuous(sec.axis = sec_axis( ~ (. - 500) / 2000, name = "Ocean water level")) +
+  theme_minimal() +
+  labs(title = "Rn vs. OWL (2 day ma)", x = "Time", y = "Rn") +
+  theme(axis.title.y = element_text(color="blue"),
+        axis.title.y.right = element_text(color="red"))
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = Rn60.scaledspec %>%
+           filter(scaledfreq < 1.2) 
+  ) +
+  geom_line(
+    mapping = aes(
+      x = scaledfreq,
+      y = scaledspec
+    ),
+    color = "blue",
+    alpha = 0.5
+  ) +
+  theme_minimal() +
+  labs(title = "Smoothed periodogram of Rn", x = "Frequency", y = "Spectral density")
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = bind_cols(Rn60.scaledspec, owl.scaledspec) %>%
+           filter(scaledfreq < 8) 
+  ) +
+  geom_line(
+    mapping = aes(
+      x = scaledfreq,
+      y = scaledspec
+    ),
+    color = "blue",
+    alpha = 0.5
+  ) +
+  geom_line(
+    mapping = aes(
+      x = scaledfreq1,
+      y = -scaledspec1 * 200000
+    ),
+    color = "red",
+    alpha = 0.5
+  ) +
+  theme_minimal() +
+  labs(title = "Smoothed periodogram of Rn (blue) and owl (-red)", x = "Frequency", y = "Spectral density")
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = bind_cols(Rn60.scaledspec, owl.scaledspec) %>%
+           filter(scaledper < 135) 
+  ) +
+  geom_line(
+    mapping = aes(
+      x = scaledper,
+      y = scaledspec
+    ),
+    color = "blue",
+    alpha = 0.5
+  ) +
+  geom_line(
+    mapping = aes(
+      x = scaledper1,
+      y = -scaledspec1 * 200000
+    ),
+    color = "red",
+    alpha = 0.5
+  ) +
+  theme_minimal() +
+  labs(title = "Smoothed periodogram of Rn (blue) and owl (-red)", x = "Period in days", y = "Spectral density")
+
+# render the plot
+print(data.plot)
+
+# cross-correlation function plot
+plot.ccf <-
+  function(var1,
+           var2,
+           lag.max = 100,
+           ma = TRUE,
+           q = 24,
+           contseq = TRUE) {
+    # get the variables of interest
+    var1v <- eval(parse(text = paste0("dataAll.60.df$", var1)))
+    var2v <- eval(parse(text = paste0("dataAll.60.df$", var2)))
+    ccor.xts <- dataAll.60.df %>%
+      # calculate n-period moving averages
+      mutate(
+        temp1 = stats::filter(var1v, rep(1 / q, q), sides = 1),
+        temp2 = stats::filter(var2v, rep(1 / q, q), sides = 1)
+      ) %>%
+      # focus on the relevant data
+      select(interv60.td, var1, var2, temp1, temp2) # %>% {
+    if (contseq == TRUE) {
+      # filter out the longest sequence of available observations
+      ccor.xts <- ccor.xts %>% filter(with(rle(complete.cases(.)),
+                                           rep(
+                                             lengths == max(lengths[values]) & values, lengths
+                                           )))
+    } else {
+      # filter out complete cases
+      ccor.xts <- ccor.xts %>% filter(complete.cases(.))
+    }
+    #} %>%
+    # make it an xts
+    ccor.xts <-
+      ccor.xts %>% xts(order.by = ymd_hms(.$interv60.td, tz = "Pacific/Honolulu"))
+    # calculate the ccf for moving avereages or raw data
+    if (ma) {
+      ccf.out <- ccf(x = as.numeric(eval(parse(
+        text = paste0("ccor.xts$", "temp1")
+      ))),
+      y = as.numeric(eval(parse(
+        text = paste0("ccor.xts$", "temp2")
+      ))),
+      lag.max = lag.max)
+    } else {
+      ccf.out <- ccf(x = as.numeric(eval(parse(
+        text = paste0("ccor.xts$", var1)
+      ))),
+      y = as.numeric(eval(parse(
+        text = paste0("ccor.xts$", var2)
+      ))),
+      lag.max = lag.max)
+    }
+    # plot the data
+    data.plot <-
+      ggplot(data = bind_cols(list(lag = as.numeric(ccf.out$lag), acf = as.numeric(ccf.out$acf)))) +
+      geom_col(mapping = aes(x = lag, y = acf), color = "blue", alpha = 0.5) +
+      theme_minimal() +
+      labs(title = "Cross-correlogram", x = paste("Lags of", var1), y = "Correlation")
+      
+      # render the plot
+      print(data.plot)
+    
+    #return(ccf.out)
+  }
+
+plot.ccf(var1 = "water.owl60", var2 = "Rn60", lag.max = 100, ma = T, q = 24*30, contseq = TRUE)
+
+# correlation plot
+library(corrplot)
+cor.mat <- dataAll.60.df %>%
+  select(-interv60.td, -temp.pond60, -sigma.owl60, -(solrad:relhummin), -(chg.b.owl:slop.b6.gw)) %>%
+  filter(complete.cases(.)) %>%
+  cor()
+colnames(cor.mat) <- c("gw", "sal.p", "dep.p", "owl", "temp", "sal", "Rn60", "precip", "grad")
+corrplot.mixed(cor.mat, lower = "ellipse", upper = "number")
+
+# plot the data
+data.plot <-
+  ggplot(data = bind_cols(as.tibble(select(
+    dataAll.mo.df, calmon
+    # , calyear
+  )), as.tibble(scale(
+    select(dataAll.mo.df,-calmon)
+  ))),
+  # mapping = aes(x = ymd(paste0(calyear, "-", calmon, "-1")))) +
+  mapping = aes(x = month(calmon))) +
+  geom_line(mapping = aes(y = gw.mo,
+                          color = "1"),
+            size = 1,
+            alpha = 0.5) +
+  geom_line(mapping = aes(y = owl.mo,
+                          color = "2"),
+            size = 3,
+            alpha = 0.5) +
+  geom_line(mapping = aes(y = precip.mo,
+                          color = "3"),
+            size = 1,
+            alpha = 0.5) +
+  geom_line(mapping = aes(y = grad.mo,
+                          color = "4"),
+            size = 1,
+            alpha = 0.5) +
+  geom_line(mapping = aes(y = Rn.mo,
+                          color = "5"),
+            size = 1,
+            alpha = 0.5) +
+  scale_color_discrete(name = "Averages",
+                       labels = c("gw", "owl", "precip", "grad", "Rn")) +
+  #scale_x_continuous(breaks = 1:12, labels = as.character(month(dataAll.mo.df$calmon, label = TRUE))) +
+  theme_minimal() +
+  labs(title = "Seasonplot", x = "Month", y = "Average") +
+  theme(legend.position = "bottom")
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = dataAll.mo.df,
+  mapping = aes(x = precip.mo, y = Rn.mo)) +
+  geom_point(color = "blue", alpha = 0.5) +
+  geom_smooth(mapping = aes(x = precip.mo, y = Rn.mo), method = "lm", color = "red") +
+  theme_minimal() +
+  labs(title = "Rn vs precip", x = "Rainfall", y = "Rn")
+
+# render the plot
+print(data.plot)
+
+dev.off()
 
 ##################
 # TEST CODE BELOW THIS LINE
 ##################
 
-plot(dataAll.60.df$airtempavg)
-plot(dataAll.meteo.df$airtempavg)
-plot(dataAll.60.df$precip[dataAll.60.df$precip<0])
-
 # spectal decomposition
 # seasonal decomposition
 # rising, falling tide
 # correlogram lags, leads
-# 
+# precip and gw in single time plot
+# Rn and sal.ctd in single time plot
+# Rn and water.owl in single time plot zoom into 1 week
+
+library (EMD)
+library (hht)
+
+ee <- EEMD(dataAll.60.Rn.MaxLen.df$Rn60, 1:length(dataAll.60.Rn.MaxLen.df$interv60.td), 250, 100, 6, "trials")
+eec <- EEMDCompile ("trials", 100, 6)
+
