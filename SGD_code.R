@@ -537,13 +537,10 @@ dataAll.60.df <- dataAll.60.df %>% mutate(
 
 # monthly averages
 dataAll.mo.df <- dataAll.60.df %>% 
-  mutate(calmon = month(interv60.td)
-         # ,
-         # calyear = year(interv60.td)
-         ) %>%
+  mutate(calmon = month(interv60.td),
+         calyear = year(interv60.td)) %>%
   # filter(complete.cases(.)) %>%
-  group_by(#calyear, 
-           calmon) %>%
+  group_by(calyear, calmon) %>%
   summarize(Rn.mo = mean(Rn60, na.rm = TRUE), gw.mo = mean(gw60, na.rm = TRUE), owl.mo = mean(water.owl60, na.rm = TRUE), precip.mo = mean(precip, na.rm = TRUE), grad.mo = mean(grad, na.rm = TRUE))
   
 # remove Rn = NA from the dataset
@@ -660,25 +657,54 @@ dev.off()
 pdf(
   "plots_poster.pdf",
   onefile = TRUE,
-  width = 16 / 9 * 5,
+  # width = 16 / 9 * 5,
+  # height = 5
+  width = 6,
   height = 5
 )
 
+#dev.off()
+
 # plot the data
 data.plot <-
-  ggplot(data = dataAll.60.Rn.df) +
+  ggplot(data = dataAll.60.df) +
   geom_point(mapping = aes(
     x = interv60.td,
     y = Rn60,
-    color = ifelse(slop.b6.owl > -3.2, slop.b6.owl, -3.2)
+    # color = ifelse(slop.b6.owl > -3.2, slop.b6.owl, -3.2)
+    color = scale(water.owl60)
   ),
-  alpha = 0.5) +
-  scale_y_continuous(limits = c(0, 2000)) + 
+  alpha = 0.9) +
+  geom_line(mapping = aes(
+    x = interv60.td,
+    y = ma(Rn60, 24)
+  ),
+  color = "red",
+  alpha = 0.9) +
+  geom_point(mapping = aes(
+    x = interv60.td,
+    y = ifelse(is.na(Rn60), NA, sal.ctd60 * 50 + 1000),
+    color = scale(water.owl60)
+  ),
+  alpha = 0.9) +
+  geom_line(mapping = aes(
+    x = interv60.td,
+    y = ifelse(is.na(Rn60), NA, ma(sal.ctd60, 24) * 50 + 1000)
+  ),
+  color = "black",
+  alpha = 0.9) +
+  scale_x_datetime(limits = c(first(dataAll.60.Rn.df$interv60.td), last(dataAll.60.Rn.df$interv60.td))) +
+  scale_y_continuous(limits = c(0, 2500), sec.axis = sec_axis( ~ (. - 1000) / 50, name = "Salinity")) +
   scale_color_gradientn(colors = rev(topo.colors(5)),
-    guide = guide_colorbar(title = "std water")
+                        guide = guide_colorbar(title = "Water level")
   ) +
   theme_minimal() + 
-  ggtitle("Rn-water") + xlab("time") + ylab("Rn")
+  # labs(title = "Rn-water-salinity", x = "Time", y = "Rn") +
+  labs(x = "Time", y = "Rn") +
+  theme(axis.title.y = element_text(color="red"),
+        axis.title.y.right = element_text(color="black"), 
+        legend.key.size = unit(0.4, "cm"),
+        legend.position = c(.8,0.5))
 
 # render the plot
 print(data.plot)
@@ -912,21 +938,29 @@ data.plot <-
     mapping = aes(
       y = Rn60
     ),
-    color = "blue",
-    alpha = 0.5
+    color = "red", size = 1,
+    alpha = 0.9
+  ) +
+  geom_line(
+    mapping = aes(
+      y = sal.ctd60 * 100
+    ),
+    color = "black", size = 1,
+    alpha = 0.9
   ) +
   geom_line(
     mapping = aes(
       y = water.owl60 * 2000 + 1000
     ),
-    color = "red",
-    alpha = 0.5
+    color = "blue", size = 1,
+    alpha = 0.9
   ) +
   scale_y_continuous(sec.axis = sec_axis( ~ (. - 1000) / 2000, name = "Ocean water level")) +
   theme_minimal() +
-  labs(title = "Rn vs. Ocean water level", x = "Time", y = "Rn") +
-  theme(axis.title.y = element_text(color="blue"),
-        axis.title.y.right = element_text(color="red"))
+   labs(x = "Time", y = "Rn") +
+  geom_text(label = "Salinity x 100", x = ymd_hms("2014-04-06 12:00:00"), y = 2800, colour = "black") +
+  theme(axis.title.y = element_text(color="red"),
+        axis.title.y.right = element_text(color="blue"))
 
 # render the plot
 print(data.plot)
@@ -964,7 +998,7 @@ print(data.plot)
 # plot the data
 data.plot <-
   ggplot(data = Rn60.scaledspec %>%
-           filter(scaledfreq < 1.2) 
+           filter(scaledfreq < 5) 
   ) +
   geom_line(
     mapping = aes(
@@ -983,26 +1017,32 @@ print(data.plot)
 # plot the data
 data.plot <-
   ggplot(data = bind_cols(Rn60.scaledspec, owl.scaledspec) %>%
-           filter(scaledfreq < 8) 
+           filter(scaledfreq < 5) 
   ) +
   geom_line(
     mapping = aes(
       x = scaledfreq,
       y = scaledspec
     ),
-    color = "blue",
-    alpha = 0.5
+    color = "red",
+    size = 1,
+    alpha = 0.9
   ) +
   geom_line(
     mapping = aes(
       x = scaledfreq1,
       y = -scaledspec1 * 200000
     ),
-    color = "red",
-    alpha = 0.5
-  ) +
+    color = "blue",
+    size = 1,
+    alpha = 0.9
+  ) + 
+  scale_y_continuous(sec.axis = sec_axis( ~ (. - 0) / (-200000), name = "- Spectral density ocean water level")) +
   theme_minimal() +
-  labs(title = "Smoothed periodogram of Rn (blue) and owl (-red)", x = "Frequency", y = "Spectral density")
+  # labs(title = "Smoothed periodogram of Rn and ocean water level", x = "Frequency (1/day)", y = "Spectral density Rn") +
+  labs(x = "Frequency", y = "Spectral density Rn") +
+  theme(axis.title.y = element_text(color="red"),
+        axis.title.y.right = element_text(color="blue"))
 
 # render the plot
 print(data.plot)
@@ -1017,7 +1057,7 @@ data.plot <-
       x = scaledper,
       y = scaledspec
     ),
-    color = "blue",
+    color = "red",
     alpha = 0.5
   ) +
   geom_line(
@@ -1025,11 +1065,11 @@ data.plot <-
       x = scaledper1,
       y = -scaledspec1 * 200000
     ),
-    color = "red",
+    color = "blue",
     alpha = 0.5
   ) +
   theme_minimal() +
-  labs(title = "Smoothed periodogram of Rn (blue) and owl (-red)", x = "Period in days", y = "Spectral density")
+  labs(title = "Smoothed periodogram of Rn (red) and owl (-blue)", x = "Period in days", y = "Spectral density")
 
 # render the plot
 print(data.plot)
@@ -1103,21 +1143,19 @@ plot.ccf(var1 = "water.owl60", var2 = "Rn60", lag.max = 100, ma = T, q = 24*30, 
 # correlation plot
 library(corrplot)
 cor.mat <- dataAll.60.df %>%
-  select(-interv60.td, -temp.pond60, -sigma.owl60, -(solrad:relhummin), -(chg.b.owl:slop.b6.gw)) %>%
+  select(-interv60.td, -temp.pond60, -sal.pond60, -depth.pond60, -sigma.owl60, -(solrad:relhummin), -(chg.b.owl:slop.b6.gw)) %>%
   filter(complete.cases(.)) %>%
   cor()
-colnames(cor.mat) <- c("gw", "sal.p", "dep.p", "owl", "temp", "sal", "Rn60", "precip", "grad")
-corrplot.mixed(cor.mat, lower = "ellipse", upper = "number")
+colnames(cor.mat) <- c("gwl", "owl", "temp", "sal", "Rn", "precip", "grad")
+corrplot.mixed(cor.mat, lower = "ellipse", upper = "number", tl.cex = 2, number.cex = 2)
 
 # plot the data
 data.plot <-
   ggplot(data = bind_cols(as.tibble(select(
     dataAll.mo.df, calmon
-    # , calyear
   )), as.tibble(scale(
     select(dataAll.mo.df,-calmon)
   ))),
-  # mapping = aes(x = ymd(paste0(calyear, "-", calmon, "-1")))) +
   mapping = aes(x = month(calmon))) +
   geom_line(mapping = aes(y = gw.mo,
                           color = "1"),
@@ -1125,7 +1163,7 @@ data.plot <-
             alpha = 0.5) +
   geom_line(mapping = aes(y = owl.mo,
                           color = "2"),
-            size = 3,
+            size = 1,
             alpha = 0.5) +
   geom_line(mapping = aes(y = precip.mo,
                           color = "3"),
@@ -1137,14 +1175,52 @@ data.plot <-
             alpha = 0.5) +
   geom_line(mapping = aes(y = Rn.mo,
                           color = "5"),
-            size = 1,
+            size = 3,
             alpha = 0.5) +
   scale_color_discrete(name = "Averages",
                        labels = c("gw", "owl", "precip", "grad", "Rn")) +
-  #scale_x_continuous(breaks = 1:12, labels = as.character(month(dataAll.mo.df$calmon, label = TRUE))) +
+  scale_x_continuous(breaks = 1:12) +
+  # scale_x_discrete(breaks = 1:12, labels = as.character(month(dataAll.mo.df$calmon, label = TRUE))) +
   theme_minimal() +
   labs(title = "Seasonplot", x = "Month", y = "Average") +
   theme(legend.position = "bottom")
+
+# render the plot
+print(data.plot)
+
+# plot the data
+data.plot <-
+  ggplot(data = bind_cols(as.tibble(select(
+    dataAll.mo.df, calmon, calyear
+  )), as.tibble(scale(
+    select(dataAll.mo.df,-calmon)
+  ))),
+  mapping = aes(x = ymd(paste0(calyear, "-", calmon, "-1")))) +
+  geom_line(mapping = aes(y = gw.mo,
+                          color = "brown"),
+            size = 1,
+            alpha = 0.9) +
+  geom_line(mapping = aes(y = owl.mo,
+                          color = "darkblue"),
+            size = 1.5,
+            alpha = 0.9) +
+  geom_line(mapping = aes(y = precip.mo,
+                          color = "lightblue"),
+            size = 1.5,
+            alpha = 0.9) +
+  geom_line(mapping = aes(y = grad.mo,
+                          color = "green"),
+            size = 1,
+            alpha = 0.9) +
+  geom_line(mapping = aes(y = Rn.mo,
+                          color = "red"),
+            size = 1.5,
+            alpha = 0.9) +
+  scale_color_manual(name = "Variables", values = c("brown", "darkblue", "lightblue", "green", "red"),
+                       labels = c("Ground water level", "Ocean water level", "Precipitation", "Gradient", "Rn")) +
+  theme_minimal() +
+  labs(x = "Time", y = "Normalized monthly average") +
+  theme(legend.position = c(0.25, 0.85))
 
 # render the plot
 print(data.plot)
@@ -1160,6 +1236,16 @@ data.plot <-
 
 # render the plot
 print(data.plot)
+
+# # save the plots in a single pdf file
+pdf(
+  "plots_poster.pdf",
+  onefile = TRUE,
+  # width = 16 / 9 * 5,
+  # height = 5
+  width = 6,
+  height = 4
+)
 
 dev.off()
 
@@ -1180,4 +1266,7 @@ library (hht)
 
 ee <- EEMD(dataAll.60.Rn.MaxLen.df$Rn60, 1:length(dataAll.60.Rn.MaxLen.df$interv60.td), 250, 100, 6, "trials")
 eec <- EEMDCompile ("trials", 100, 6)
+PlotIMFs(eec)
+PlotIMFs(eec, c(1000,2000))
 
+         
