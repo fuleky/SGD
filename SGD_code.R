@@ -12,6 +12,7 @@ setwd("~/Google Drive/SGD/")
 library("xts")
 library("tidyverse")
 library("lubridate")
+library("Rlibeemd")
 
 ##################
 # SNIFFER
@@ -69,13 +70,15 @@ time.index.60 <- seq(from = ymd_hms(paste(date(first(dataAll.sniff.df$sniff.td))
                      to = ymd_hms(paste(date(last(dataAll.sniff.df$sniff.td)), hms::as.hms(60 * 60 * 24))), 
                      by = "1 hour") %>% force_tz("Pacific/Honolulu")
 
-# combine Rn data with hourly time stamps
+# combine Rn data with hourly time stamps 
+# (measurement interval > 60 min, and not exactly top of hour, so occasionally missing 2 obs.)
 dataAll.sniff60.df <- dataAll.sniff.df %>%
   select(sniff.td, Rn) %>%
   full_join(as_tibble(x = list(sniff.td = time.index.60))) %>%
   arrange(sniff.td)
 
-# find 3 consequtive NAs and find the range of the NAs
+# find 3 consequtive NAs and find the range of the NAs 
+# (true if not just measurement shift, but observation actually missing)
 cons.na <-
   is.na(lag(dataAll.sniff60.df$Rn)) &
   is.na(dataAll.sniff60.df$Rn) &
@@ -101,6 +104,7 @@ dataAll.sniff60.df <-
     Rn60 = drop(coredata(dataAll.sniff60.xts))))) %>%
   arrange(interv60.td)
 
+# # a different method to achieve the same:
 # # aggregate observations within an hour using dplyr
 # dataAll.sniff60.df <- dataAll.sniff.df %>%
 #   # create factor levels for each hour
@@ -546,11 +550,20 @@ dataAll.mo.df <- dataAll.60.df %>%
 # remove Rn = NA from the dataset
 dataAll.60.Rn.df <- dataAll.60.df %>% filter(!is.na(Rn60))
 
+# MaxLen ------------------------------------------------------------------
+
+
 # get the longest sequence of continuous observations
 dataAll.60.Rn.MaxLen.df <- dataAll.60.df %>%
   select(interv60.td, Rn60, water.owl60) %>%
-  filter(with(rle(complete.cases(.)), 
-              rep(lengths == max(lengths[values]) & values, lengths)))
+  filter(with(rle(complete.cases(.)),
+              rep(lengths == max(lengths[values]) &
+                    values, lengths)))
+dataAll.60.Rn.MaxLen.xts <- xts(
+  x = dataAll.60.Rn.MaxLen.df[, 2:3],
+  order.by = ymd_hms(dataAll.60.Rn.MaxLen.df$interv60.td,
+                     tz = "Pacific/Honolulu")
+)
 
 ##################
 # SPECTRAL ANALYSIS
@@ -1237,15 +1250,408 @@ data.plot <-
 # render the plot
 print(data.plot)
 
-# # save the plots in a single pdf file
+# # # save the plots in a single pdf file
+# pdf(
+#   "plots_poster.pdf",
+#   onefile = TRUE,
+#   # width = 16 / 9 * 5,
+#   # height = 5
+#   width = 6,
+#   height = 4
+# )
+
+dev.off()
+
+##################
+# SPECTRAL DECOMPOSITION
+##################
+
+# #library (EMD)
+# library (hht)
+# eefull <- ee
+# ee <- EEMD(dataAll.60.Rn.MaxLen.df$Rn60[1000:5000], 1:length(dataAll.60.Rn.MaxLen.df$interv60.td[1000:5000]), 250, 100, 6, "trials")
+# eec <- EEMDCompile ("trials", 100, 6)
+# hgram <- HHRender(eec, 2, 0.001)
+# HHGramImage(hgram)
+# hspec <- HHSpectrum(eec, 0.1)
+# HHSpecPlot(hspec)
+# 
+# PlotIMFs(eec)
+# PlotIMFs(eec, c(1000,2000))
+# cee <- CEEMD(dataAll.60.Rn.MaxLen.df$Rn60, 1:length(dataAll.60.Rn.MaxLen.df$interv60.td), 250, 100)
+
+# select window to be plotted
+all.win <- dataAll.60.df %>% 
+  transmute(interv60.td >= "2015-03-01 00:00:00" & interv60.td < "2016-07-01 00:00:00")
+# transmute(interv60.td >= "2016-02-01 00:00:00" & interv60.td < "2016-05-01 00:00:00")
+spec.win <- dataAll.60.Rn.MaxLen.df %>% 
+  transmute(interv60.td >= "2015-03-01 00:00:00" & interv60.td < "2016-07-01 00:00:00")
+# transmute(interv60.td >= "2016-02-01 00:00:00" & interv60.td < "2016-05-01 00:00:00")
+dataAll.60.win <- dataAll.60.df %>% 
+  filter(all.win[[1]])
+
+# Rn decomposition
+# obtain implicit mode functions via decomposition
+imfs.ts <- ceemdan(dataAll.60.Rn.MaxLen.df$Rn60)
+# combine time with data from ts
+imfs.df <-
+  bind_cols(as.tibble(select(dataAll.60.Rn.MaxLen.df, -water.owl60)),
+            as.tibble(imfs.ts))
+# select window to be plotted
+imfs.win <- imfs.df %>% 
+  filter(spec.win[[1]])
+
+# owl decompostion
+# obtain implicit mode functions via decomposition
+imfs.owl.ts <- ceemdan(dataAll.60.Rn.MaxLen.df$water.owl60)
+# combine time with data from ts
+imfs.owl.df <-
+  bind_cols(as.tibble(select(dataAll.60.Rn.MaxLen.df, -Rn60)),
+            as.tibble(imfs.owl.ts))
+# select window to be plotted
+imfs.owl.win <- imfs.owl.df %>% 
+  filter(spec.win[[1]])
+
+# plot Rn60 decomposition to pdf
 pdf(
-  "plots_poster.pdf",
+  "plots_ceemdan.pdf",
   onefile = TRUE,
   # width = 16 / 9 * 5,
   # height = 5
-  width = 6,
+  width = 60,
   height = 4
 )
+# plot original data, each imf, and residuals
+for (i.imf in 2:ncol(imfs.win)) {
+  data.plot <-
+    ggplot(data = imfs.win,
+           mapping = aes(
+             x = interv60.td)) +
+    geom_line(
+      mapping = aes(
+        y = imfs.win[[i.imf]]
+      ),
+      color = "blue",
+      size = 1,
+      alpha = 0.5
+    ) +
+    theme_minimal() +
+    scale_x_datetime(date_minor_breaks = "1 day") +
+    labs(title = paste("Rn60", colnames(imfs.df[,i.imf])), x = "Time", y = colnames(imfs.df[,i.imf])) +
+    theme(axis.title.y = element_text(color="blue"))
+  # render the plot
+  print(data.plot)
+}
+dev.off()
+
+# plot owl decomposition to pdf
+pdf(
+  "plots_ceemdan.owl.pdf",
+  onefile = TRUE,
+  # width = 16 / 9 * 5,
+  # height = 5
+  width = 60,
+  height = 4
+)
+# plot original data, each imf, and residuals
+for (i.imf in 2:ncol(imfs.owl.win)) {
+  data.plot <-
+    ggplot(data = imfs.owl.win,
+           mapping = aes(
+             x = interv60.td)) +
+    geom_line(
+      mapping = aes(
+        y = imfs.owl.win[[i.imf]]
+      ),
+      color = "blue",
+      size = 1,
+      alpha = 0.5
+    ) +
+    theme_minimal() +
+    scale_x_datetime(date_minor_breaks = "1 day") +
+    labs(title = paste("owl", colnames(imfs.owl.win[,i.imf])), x = "Time", y = colnames(imfs.owl.win[,i.imf])) +
+    theme(axis.title.y = element_text(color="blue"))
+  # render the plot
+  print(data.plot)
+}
+dev.off()
+
+# look at combinations of IMFs
+# plot to pdf
+pdf(
+  "plots_ceemdan_comb.pdf",
+  onefile = TRUE,
+  # width = 16 / 9 * 5,
+  # height = 5
+  width = 60,
+  height = 4
+)
+# plot original data, each imf in single plot
+# to see relative magnitude of imf combinations
+data.plot <-
+  ggplot(data = imfs.win,
+         mapping = aes(x = interv60.td)) +
+  geom_line(
+    mapping = aes(y = imfs.win[[2]]),
+    color = "black",
+    size = 1,
+    alpha = 0.5
+  ) +
+  geom_line(
+    mapping = aes(y = rowSums(imfs.win[,3:4])),
+    color = "blue",
+    size = 1,
+    alpha = 0.5
+  ) +
+  geom_line(
+    mapping = aes(y = rowSums(imfs.win[,5:7])),
+    color = "red",
+    size = 1,
+    alpha = 0.5
+  ) +
+  geom_line(
+    mapping = aes(y = rowSums(imfs.win[,8:10])),
+    color = "green",
+    size = 1,
+    alpha = 0.5
+  ) +
+  geom_line(
+    mapping = aes(y = rowSums(imfs.win[,11:15])),
+    color = "grey80",
+    size = 1,
+    alpha = 0.5
+  ) +
+  theme_minimal() +
+  scale_x_datetime(date_minor_breaks = "1 day")
+# render the plot
+print(data.plot)
+dev.off()
+
+# find relationship between Rn60 imfs and owl
+fit <- step(lm(dataAll.60.Rn.MaxLen.df$water.owl60 ~ ., data = select(imfs.df, -c(interv60.td, Rn60))))
+summary(fit)
+fit <- step(lm(imfs.owl.win[[2]] ~ ., data = select(imfs.win, -c(interv60.td, Rn60))))
+summary(fit)
+# plot to pdf
+pdf(
+  "plots_ceemdan_rnowl.pdf",
+  onefile = TRUE,
+  # width = 16 / 9 * 5,
+  # height = 5
+  width = 60,
+  height = 4
+)
+# plot owl and sum of select Rn60 imfs
+data.plot <-
+  ggplot(data = imfs.win,
+         mapping = aes(x = interv60.td)) +
+  geom_line(
+    mapping = aes(y = imfs.owl.win[[2]]*1000),
+    color = "black",
+    size = 1,
+    alpha = 0.5
+  ) +
+  geom_line(
+    # mapping = aes(y = rowSums(imfs.win[,c(6:8,9:12,13:15)])),
+    mapping = aes(y = rowSums(imfs.win[,c(6:7)])),
+    color = "blue",
+    size = 1,
+    alpha = 0.5
+  ) +
+  theme_minimal() +
+  scale_x_datetime(date_minor_breaks = "1 day")
+# render the plot
+print(data.plot)
+# plot owl and sum of select Rn60 imfs
+data.plot <-
+  ggplot(data = imfs.win,
+         mapping = aes(x = interv60.td)) +
+  geom_line(
+    mapping = aes(y = imfs.owl.win[[2]]*1000),
+    color = "black",
+    size = 1,
+    alpha = 0.5
+  ) +
+  geom_line(
+    # mapping = aes(y = rowSums(imfs.win[,c(6:8,9:12,13:15)])),
+    mapping = aes(y = rowSums(imfs.win[,c(5:7)])),
+    color = "blue",
+    size = 1,
+    alpha = 0.5
+  ) +
+  theme_minimal() +
+  scale_x_datetime(date_minor_breaks = "1 day")
+# render the plot
+print(data.plot)
+# plot owl and sum of select Rn60 imfs
+data.plot <-
+  ggplot(data = imfs.win,
+         mapping = aes(x = interv60.td)) +
+  geom_line(
+    mapping = aes(y = imfs.owl.win[[2]]*1000),
+    color = "black",
+    size = 1,
+    alpha = 0.5
+  ) +
+  geom_line(
+    # mapping = aes(y = rowSums(imfs.win[,c(6:8,9:12,13:15)])),
+    mapping = aes(y = rowSums(imfs.win[,c(6:8)])),
+    color = "blue",
+    size = 1,
+    alpha = 0.5
+  ) +
+  theme_minimal() +
+  scale_x_datetime(date_minor_breaks = "1 day")
+# render the plot
+print(data.plot)
+# plot owl and sum of select Rn60 imfs
+data.plot <-
+  ggplot(data = imfs.win,
+         mapping = aes(x = interv60.td)) +
+  geom_line(
+    mapping = aes(y = imfs.owl.win[[2]]*1000),
+    color = "black",
+    size = 1,
+    alpha = 0.5
+  ) +
+  geom_line(
+    # mapping = aes(y = rowSums(imfs.win[,c(6:8,9:12,13:15)])),
+    mapping = aes(y = rowSums(imfs.win[,c(5:8)])),
+    color = "blue",
+    size = 1,
+    alpha = 0.5
+  ) +
+  theme_minimal() +
+  scale_x_datetime(date_minor_breaks = "1 day")
+# render the plot
+print(data.plot)
+# plot owl and sum of select Rn60 imfs
+data.plot <-
+  ggplot(data = imfs.win,
+         mapping = aes(x = interv60.td)) +
+  geom_line(
+    mapping = aes(y = imfs.owl.win[[2]]*1000),
+    color = "black",
+    size = 1,
+    alpha = 0.5
+  ) +
+  geom_line(
+    # mapping = aes(y = rowSums(imfs.win[,c(6:8,9:12,13:15)])),
+    mapping = aes(y = rowSums(imfs.win[,c(5:9)])),
+    color = "blue",
+    size = 1,
+    alpha = 0.5
+  ) +
+  theme_minimal() +
+  scale_x_datetime(date_minor_breaks = "1 day")
+# render the plot
+print(data.plot)
+# plot owl and sum of select Rn60 imfs
+data.plot <-
+  ggplot(data = imfs.win,
+         mapping = aes(x = interv60.td)) +
+  geom_line(
+    mapping = aes(y = imfs.owl.win[[2]]*1000),
+    color = "black",
+    size = 1,
+    alpha = 0.5
+  ) +
+  geom_line(
+    # mapping = aes(y = rowSums(imfs.win[,c(6:8,9:12,13:15)])),
+    mapping = aes(y = rowSums(imfs.win[,c(5:9, 15)])),
+    color = "blue",
+    size = 1,
+    alpha = 0.5
+  ) +
+  theme_minimal() +
+  scale_x_datetime(date_minor_breaks = "1 day")
+# render the plot
+print(data.plot)
+dev.off()
+
+# plot to pdf
+pdf(
+  "plots_ceemdan_rnowl_full.pdf",
+  onefile = TRUE,
+  # width = 16 / 9 * 5,
+  # height = 5
+  width = 60,
+  height = 4
+)
+# plot sum of imfs for Rn60 and owl full dataset
+data.plot <-
+  ggplot(data = imfs.df,
+         mapping = aes(x = interv60.td)) +
+  geom_line(
+    mapping = aes(y = rowSums(imfs.owl.df[,c(12:15)]*1000)),
+    color = "black",
+    size = 1,
+    alpha = 0.5
+  ) +
+  geom_line(
+    # mapping = aes(y = rowSums(imfs.win[,c(6:8,9:12,13:15)])),
+    mapping = aes(y = rowSums(imfs.df[,c(12:15)])),
+    color = "blue",
+    size = 1,
+    alpha = 0.5
+  ) +
+  theme_minimal() +
+  scale_x_datetime(date_minor_breaks = "1 day")
+# render the plot
+print(data.plot)
+dev.off()
+
+# plot to pdf
+pdf(
+  "plots_ceemdan_rnowlprec.pdf",
+  onefile = TRUE,
+  width = 16 / 9 * 5,
+  height = 5
+  # width = 60,
+  # height = 4
+)
+# plot sum of Rn60 imfs and drivers of Rn60
+data.plot <-
+  ggplot(data = imfs.win,
+         mapping = aes(x = interv60.td)) +
+  geom_line(
+    # mapping = aes(y = imfs.win[[2]] - rowSums(imfs.win[,c(5:7)])),
+    # mapping = aes(y = imfs.win[[2]] - rowSums(imfs.win[,c(3:7)])),
+    # mapping = aes(y = rowSums(imfs.win[,c(13:15)])),
+    mapping = aes(y = imfs.win[[15]],  color = "1"),
+    # color = "red", 
+    size = 1,
+    alpha = 0.5
+  ) +
+  # geom_line(
+  #   mapping = aes(y = rowSums(imfs.win[,c(5:7)])),
+  #   color = "red",
+  #   size = 1,
+  #   alpha = 0.5
+  # ) +
+  geom_line(
+    mapping = aes(y = dataAll.60.win$precip*10, color = "2"),
+    # color = "green", 
+    size = 1,
+    alpha = 0.5
+  ) +
+  geom_line(
+    # mapping = aes(y = dataAll.60.win$water.owl60*100),
+    mapping = aes(y = imfs.owl.win[,15]*1000, color = "3"),
+    # color = "blue", 
+    size = 1,
+    alpha = 0.5
+  ) +
+  theme_minimal() +
+  scale_x_datetime(date_minor_breaks = "1 day") +
+  scale_color_manual(name = "", 
+                     values = c("1" = "red", "2" = "green", "3" = "blue"), 
+                     labels = c("Rn trend", "precip * 10", "owl trend * 1000")) +
+  labs(title = "Comparison of precipitation and trends in Rn and water level", x = "Time", y = "") +
+  theme(legend.position = "bottom")
+
+# render the plot
+print(data.plot)
 
 dev.off()
 
@@ -1260,13 +1666,3 @@ dev.off()
 # precip and gw in single time plot
 # Rn and sal.ctd in single time plot
 # Rn and water.owl in single time plot zoom into 1 week
-
-library (EMD)
-library (hht)
-
-ee <- EEMD(dataAll.60.Rn.MaxLen.df$Rn60, 1:length(dataAll.60.Rn.MaxLen.df$interv60.td), 250, 100, 6, "trials")
-eec <- EEMDCompile ("trials", 100, 6)
-PlotIMFs(eec)
-PlotIMFs(eec, c(1000,2000))
-
-         
